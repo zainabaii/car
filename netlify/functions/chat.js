@@ -151,7 +151,7 @@ const TOPIC_PATTERNS = {
   brakes: /brake|braking|squeal|grind|pedal|stop|abs\b|rotor|pad/i,
 
   // 7. Engine / Check Engine Light (check engine light, cel, misfire, warning light)
-  checkengine: /check\s*engine|engine\s*light|warning\s*light|cel\b|obd|diagnostic|misfire|rough\s*idle/i,
+  checkengine: /check\s*engine|engine\s*light|warning\s*light|cel\b|obd|diagnostic|misfire|rough\s*idle|stall/i,
 
   // 8. Oil (low oil, oil light, oil pressure, dipstick, oil leak)
   oil: /oil\s*(warning|light|pressure|level|lamp|leak)|low\s*oil|dipstick/i,
@@ -159,8 +159,8 @@ const TOPIC_PATTERNS = {
   // 9. Steering (steering wheel, power steering, hard to turn, pulling)
   steering: /steer|power\s*steering|hard\s*to\s*turn|wheel\s*pull|wheel\s*drift/i,
 
-  // 10. Fuel Economy (poor gas mileage, using too much fuel, mpg)
-  fuel: /fuel\s*econom|gas\s*mileage|mpg|km\/l|km\.\s*l|fuel\s*consump|drink.*fuel|poor\s*mileage|using\s*too\s*much\s*gas|too\s*much\s*fuel/i,
+  // 10. Fuel Economy / High Fuel Consumption (using more fuel, fuel consumption, gas mileage, mpg)
+  fuel: /fuel|gas\s*mileage|gas\s*usage|mpg|km\/l|l\/100km|fuel\s*consump|drink.*fuel|eat.*fuel|burn.*fuel|poor\s*mileage|bad\s*mileage|using.*fuel|more\s*fuel|too\s*much\s*fuel|high\s*fuel|gas\s*consumption|using.*gas|more\s*gas|too\s*much\s*gas/i,
 
   // 11. Strange Noises (squeak, rattle, clunk, knock, bang, hiss, hum)
   noise: /noise|sound|squeak|rattle|clunk|knock|bang|hiss|hum|click/i,
@@ -170,16 +170,18 @@ const TOPIC_PATTERNS = {
 };
 
 function classifyTopic(message) {
+  const cleanMsg = message.trim();
   for (const [topic, pattern] of Object.entries(TOPIC_PATTERNS)) {
-    if (pattern.test(message)) return topic;
+    if (pattern.test(cleanMsg)) return topic;
   }
   
-  // Check if message describes any automotive issue/symptom that didn't hit a specific pattern
-  if (/problem|issue|wrong|symptom|trouble|broken|fail|leak|smell|smoke|damage/i.test(message)) {
-    return 'general_symptom';
+  // Check if the message is purely a basic greeting
+  if (/^(hi|hello|hey|greetings|good morning|good afternoon|good evening|vayra|start|help)$/i.test(cleanMsg)) {
+    return 'greeting';
   }
-  
-  return 'general';
+
+  // Any message that isn't a plain greeting contains an inquiry or symptom that must be answered directly
+  return 'general_symptom';
 }
 
 function filterConversationByTopic(conversation, currentTopic) {
@@ -268,7 +270,7 @@ Your response MUST address shaking/vibration directly for ${vehicleStr || 'their
 - Explain 2-3 likely causes (wheel imbalance, uneven/damaged tires, bent rim, wheel alignment, suspension or CV joint wear).
 - Highlight wheel balancing and tire condition as primary suspects for speed-dependent shaking.
 - Provide 2-3 safe checks (inspect tire tread for uneven wear, check tire pressures, inspect rims).
-- Ask 1 relevant follow-up question (e.g., at what exact speed it starts, whether felt in steering wheel or seat).`,
+- Ask 1 relevant follow-up question.`,
 
     oil: `TOPIC DETECTED: Oil / Oil Pressure Warning.
 The customer's message describes an oil light or low oil condition.
@@ -278,12 +280,13 @@ Your response MUST address engine oil directly for ${vehicleStr || 'their vehicl
 - Provide safe check (check dipstick when engine is off and parked on level ground).
 - Ask 1 relevant follow-up question.`,
 
-    fuel: `TOPIC DETECTED: Fuel Economy / Fuel Consumption Problem.
-The customer's message describes poor fuel economy or high gas consumption.
+    fuel: `TOPIC DETECTED: Fuel Economy / High Fuel Consumption.
+The customer's message describes using more fuel than usual, poor gas mileage, or high fuel consumption.
 Your response MUST address fuel economy directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (underinflated tires, dirty air filter, oxygen/MAF sensor issue, worn spark plugs).
-- Provide 2-3 safe checks (check tire pressures, inspect air filter, check for active warning lights).
-- Ask 1 relevant follow-up question.`,
+- Explain probable causes (low tire pressure, aggressive driving/excessive idling, dirty air filter, worn spark plugs, fuel system problems, engine/sensor issues, brake drag, poor wheel alignment).
+- Provide safe checks (check tire pressure, inspect air filter for dirt, check for warning lights).
+- Recommend professional inspection if the issue continues.
+- Ask 1 relevant follow-up question AFTER providing useful advice.`,
 
     steering: `TOPIC DETECTED: Steering System Problem.
 The customer's message describes steering difficulty, pulling, or looseness.
@@ -316,45 +319,47 @@ Your response MUST address tire care directly for ${vehicleStr || 'their vehicle
 - Provide safe checks (inspect tread for objects, check pressure with gauge).
 - Ask 1 relevant follow-up question.`,
 
-    general_symptom: `TOPIC DETECTED: Automotive Symptom (${userMessage}).
-The customer described a specific vehicle issue: "${userMessage}".
-- Analyze this specific symptom directly using automotive mechanics.
-- List 2-3 probable causes.
-- Give 2-3 safe things the customer can check.
+    general_symptom: `TOPIC DETECTED: Customer Vehicle Inquiry ("${userMessage}").
+The customer described a vehicle issue or question: "${userMessage}".
+- Analyze their query directly using automotive knowledge.
+- List 2-3 probable causes or explanations.
+- Give 2-3 practical safe checks.
 - Recommend mechanic inspection if needed.
-- Ask 1 relevant follow-up question.`,
+- Ask 1 relevant follow-up question AFTER providing a useful answer.
+- NEVER reset to a welcome message or ask what problem they are experiencing.`,
 
-    general: `TOPIC: General Greeting / Inquiry.
-The customer has NOT described a specific vehicle problem yet.
-- Greet them warmly as VAYRA.
-- Politely ask them to describe the symptom or problem their vehicle is experiencing (e.g. AC warm, shaking at speed, won't start, check engine light) along with their vehicle year, make, and model.`
+    greeting: `TOPIC: Standalone Greeting.
+The customer sent a standalone greeting (e.g. "Hi", "Hello").
+- Greet them warmly as VAYRA AI.
+- Invite them to describe the symptom or problem their vehicle is experiencing along with their vehicle year, make, and model.`
   };
 
-  const topicContext = topicGuidance[currentTopic] || topicGuidance.general;
+  const topicContext = topicGuidance[currentTopic] || topicGuidance.general_symptom;
 
   return `You are VAYRA, a friendly, expert automotive assistant for a car website.
 Tagline: "Know Your Car. Care Smarter."
 
-VEHICLE SPECIFIED BY CUSTOMER: ${hasVehicle ? vehicleStr : 'Not specified — use any vehicle details mentioned in customer\'s message.'}
+VEHICLE SPECIFIED BY CUSTOMER: ${hasVehicle ? vehicleStr : 'Not specified in vehicle state — reference any year, make, model mentioned in the customer\'s message.'}
 
 CURRENT MESSAGE CONTEXT & TOPIC INSTRUCTIONS:
 ${topicContext}
 
-STRICT RESPONSE RULES:
+STRICT RESPONSE RULES (MUST FOLLOW AT ALL TIMES):
 1. ALWAYS prioritize the customer's CURRENT message.
 2. Respond SPECIFICALLY to the problem described in the customer's current message.
-3. NEVER repeat or reuse a previous answer if the customer asks about a different topic or problem.
-4. ABSOLUTE PROHIBITION ON GENERIC FALLBACKS:
-   - If the customer described a problem (e.g., AC warm, car jerks, shaking, won't start), you MUST NOT say "If your vehicle is experiencing an unexpected issue..." and MUST NOT ask "What problem is happening?". The customer ALREADY told you the problem! Answer it immediately!
+3. Extract and reference the customer's vehicle year/make/model if provided in their message.
+4. ABSOLUTE PROHIBITION ON RESETTING TO WELCOME MESSAGE:
+   - If the customer described a problem (e.g., fuel consumption, AC warm, car jerks, shaking, won't start), you MUST NOT show a welcome message, MUST NOT say "If your vehicle is experiencing an unexpected issue...", and MUST NOT ask "What problem are you experiencing?". The customer ALREADY stated the problem! Answer it directly!
 5. Structure your response clearly:
-   - Acknowledge the vehicle and specific symptom directly.
+   - Acknowledge the vehicle and specific symptom directly in your opening line.
    - Explain 2–3 probable causes in simple, clear language.
    - Provide 2–3 practical, safe things the customer can check.
    - State when to visit a professional mechanic.
-   - Ask 1–2 useful follow-up questions to help narrow down the cause.
+   - Only ask a follow-up question AFTER providing a useful, direct answer.
 6. Keep response concise (4 to 8 sentences, nicely formatted with bullet points if helpful).
-7. NEVER claim a guaranteed diagnosis — use words like "may", "could", "possible".
-8. SAFETY MANDATE: Never instruct users to perform dangerous actions (opening hot radiator caps, working under unsupported jacked cars, touching hot components while engine is running).`;
+7. Keep answers focused strictly on the reported symptom. Do NOT add unrelated symptoms.
+8. NEVER reuse a previous conversation's problem category when the current message contains a different problem.
+9. SAFETY MANDATE: Never instruct users to perform dangerous actions (opening hot radiator caps, working under unsupported jacked cars, touching hot components while engine is running).`;
 }
 
 // -----------------------------------------------------------------------------
@@ -587,14 +592,14 @@ If the oil level is correct but the light remains on, do not restart the engine 
 
 *Did the oil warning light turn on while driving, or right after starting the car?*`,
 
-    fuel: `If your ${vName} is consuming excessive fuel, key causes include underinflated tires, a clogged engine air filter, a failing oxygen sensor, or worn spark plugs.
+    fuel: `If your ${vName} is using more fuel than usual, key causes can include underinflated tires, aggressive driving or excessive idling, a dirty engine air filter, worn spark plugs, fuel system issues, engine or sensor faults (such as a bad oxygen sensor), brake drag, or poor wheel alignment.
 
 **Safe Checks You Can Do:**
-* Check and inflate all tires to the recommended PSI.
+* Check and inflate all tires to the recommended PSI listed on your driver's door jamb sticker.
 * Inspect the engine air filter for dust and debris buildup.
-* Check if the check engine light is illuminated (a bad sensor can drop fuel economy by 20%+).
+* Check if the check engine light is on (a failing sensor can drop fuel economy significantly).
 
-Addressing basic maintenance items like air filters and tire pressure usually restores MPG.
+If tire pressures and air filter are normal, have a qualified mechanic perform a diagnostic scan and alignment check.
 
 *Did the drop in fuel economy happen suddenly, or has it been getting worse over time?*`,
 
@@ -652,12 +657,12 @@ If symptoms persist or warning lights illuminate, have a qualified technician in
 
 *What specific symptom or behavior are you noticing, and when does it occur?*`,
 
-    general: `Hello! I am VAYRA, your AI Car Care Assistant.
+    greeting: `Hello! I am VAYRA, your AI Car Care Assistant.
 
 I can help diagnose symptoms, explain potential causes, suggest safe checks, and guide you on when to visit a mechanic.
 
 *To get started, please tell me what problem or symptom your vehicle is experiencing, along with your vehicle's year, make, and model.*`
   };
 
-  return responses[topic] || responses.general_symptom || responses.general;
+  return responses[topic] || responses.general_symptom || responses.greeting;
 }
