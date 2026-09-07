@@ -9,6 +9,7 @@ import MaintenanceHub from './components/MaintenanceHub';
 import WorkshopFinder from './components/WorkshopFinder';
 import ServiceReminders from './components/ServiceReminders';
 import FeatureGrid from './components/FeatureGrid';
+import FinalCtaSection from './components/FinalCtaSection';
 import Footer from './components/Footer';
 
 export default function App() {
@@ -44,7 +45,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#05070A] text-slate-100 font-sans selection:bg-[#00F0FF] selection:text-black">
+    <div className="min-h-screen bg-[#F7FAFC] text-[#10233F] font-sans selection:bg-[#0B5ED7] selection:text-white">
       
       {/* Navbar */}
       <Navbar 
@@ -102,6 +103,11 @@ export default function App() {
       {/* Feature Storytelling Cards Grid */}
       <FeatureGrid 
         onNavigate={handleNavigate}
+      />
+
+      {/* Final Automotive Commercial CTA Section */}
+      <FinalCtaSection 
+        onStartChat={() => handleNavigate('ai-care')}
       />
 
       {/* Footer */}

@@ -38,14 +38,14 @@ export default function FeatureGrid({ onNavigate }) {
   ];
 
   return (
-    <section className="py-24 relative bg-[#07090E] border-t border-slate-800">
+    <section className="py-24 relative bg-white border-t border-[#DCE8F5]">
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         
         {/* Section Title */}
         <div className="text-center space-y-4 max-w-3xl mx-auto mb-16">
-          <p className="text-xs font-mono uppercase tracking-widest text-[#00F0FF]">CORE PRODUCT ARCHITECTURE</p>
-          <h2 className="text-3xl sm:text-5xl font-display font-extrabold text-white tracking-tight">
+          <p className="text-xs font-mono uppercase tracking-widest text-[#0B5ED7] font-bold">CORE PRODUCT ARCHITECTURE</p>
+          <h2 className="text-3xl sm:text-5xl font-display font-extrabold text-[#10233F] tracking-tight">
             ENGINEERED FOR MODERN CAR OWNERS
           </h2>
         </div>
@@ -58,29 +58,29 @@ export default function FeatureGrid({ onNavigate }) {
               <div
                 key={feat.id}
                 onClick={() => onNavigate(feat.id)}
-                className="group cursor-pointer glass-panel p-8 rounded-2xl border border-slate-800 hover:border-[#00F0FF]/50 transition-all duration-300 relative overflow-hidden flex flex-col justify-between"
+                className="group cursor-pointer bg-[#F8FAFC] p-8 rounded-3xl border border-[#DCE8F5] hover:border-[#C4DCF5] hover:bg-white shadow-md hover:shadow-xl transition-all duration-300 relative overflow-hidden flex flex-col justify-between"
               >
                 {/* Subtle Hover Glow Effect */}
-                <div className="absolute top-0 right-0 w-32 h-32 bg-[#00F0FF]/5 rounded-full blur-2xl group-hover:bg-[#00F0FF]/15 transition-all"></div>
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#0B5ED7]/5 rounded-full blur-2xl group-hover:bg-[#0B5ED7]/10 transition-all"></div>
 
                 <div className="space-y-4 relative z-10">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#0A2540] to-[#00F0FF]/20 border border-[#00F0FF]/40 flex items-center justify-center text-[#00F0FF] group-hover:scale-110 transition-transform">
+                  <div className="w-12 h-12 rounded-xl bg-[#EEF6FF] border border-[#C4DCF5] flex items-center justify-center text-[#0B5ED7] group-hover:scale-110 transition-transform shadow-sm">
                     <IconComp className="w-6 h-6" />
                   </div>
 
                   <div>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{feat.title}</span>
-                    <h3 className="text-2xl font-display font-extrabold text-white mt-1 group-hover:text-[#00F0FF] transition-colors">
+                    <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-widest">{feat.title}</span>
+                    <h3 className="text-2xl font-display font-extrabold text-[#10233F] mt-1 group-hover:text-[#0B5ED7] transition-colors">
                       "{feat.tagline}"
                     </h3>
                   </div>
 
-                  <p className="text-sm text-slate-300 leading-relaxed font-sans">
+                  <p className="text-sm text-slate-600 leading-relaxed font-sans">
                     {feat.description}
                   </p>
                 </div>
 
-                <div className="pt-6 border-t border-slate-800/80 mt-6 flex items-center justify-between text-xs font-mono font-bold text-[#00F0FF] relative z-10">
+                <div className="pt-6 border-t border-slate-200 mt-6 flex items-center justify-between text-xs font-mono font-bold text-[#0B5ED7] relative z-10">
                   <span>{feat.actionText}</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-2 transition-transform" />
                 </div>

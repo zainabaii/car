@@ -56,36 +56,36 @@ export default function MaintenanceHub({ activeVehicle, onAskMaintenanceQuestion
     : maintenanceItems.filter(item => item.category.toLowerCase().includes(filterCategory));
 
   return (
-    <section id="maintenance" className="py-24 relative bg-[#05070A] overflow-hidden">
+    <section id="maintenance" className="py-24 relative bg-[#F7FAFC] overflow-hidden border-t border-[#DCE8F5]">
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         
         {/* Section Header */}
         <div className="text-center space-y-4 max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full glass-pill text-[#00F0FF] text-xs font-mono tracking-widest uppercase">
-            <Wrench className="w-3.5 h-3.5 text-[#00F0FF]" />
+          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white border border-[#C4DCF5] shadow-sm text-[#0B5ED7] text-xs font-mono font-bold uppercase tracking-wider">
+            <Wrench className="w-3.5 h-3.5 text-[#0B5ED7]" />
             <span>INTELLIGENT SERVICE PLANNING</span>
           </div>
 
-          <h2 className="text-3xl sm:text-5xl font-display font-extrabold text-white tracking-tight">
+          <h2 className="text-3xl sm:text-5xl font-display font-extrabold text-[#10233F] tracking-tight">
             SMART MAINTENANCE
           </h2>
-          <p className="text-lg text-slate-400 font-normal">
+          <p className="text-lg text-slate-600 font-normal">
             Know what deserves attention before small wear items turn into costly repairs.
           </p>
         </div>
 
         {/* Filter Categories Bar */}
         <div className="flex justify-center mb-10">
-          <div className="inline-flex p-1.5 rounded-xl glass-panel border border-slate-800 space-x-2">
+          <div className="inline-flex p-1.5 rounded-2xl bg-white border border-[#DCE8F5] shadow-sm space-x-2">
             {['all', 'engine', 'braking', 'drivetrain'].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setFilterCategory(cat)}
-                className={`px-5 py-2 rounded-lg text-xs font-mono uppercase transition-all ${
+                className={`px-5 py-2 rounded-xl text-xs font-mono uppercase transition-all ${
                   filterCategory === cat
-                    ? 'bg-[#00F0FF]/15 text-[#00F0FF] border border-[#00F0FF]/40 font-bold shadow-[0_0_12px_rgba(0,240,255,0.2)]'
-                    : 'text-slate-400 hover:text-white'
+                    ? 'bg-[#EEF6FF] text-[#0B5ED7] border border-[#C4DCF5] font-bold shadow-sm'
+                    : 'text-slate-600 hover:text-[#10233F] hover:bg-slate-50'
                 }`}
               >
                 {cat}
@@ -99,46 +99,46 @@ export default function MaintenanceHub({ activeVehicle, onAskMaintenanceQuestion
           {filteredList.map((item) => (
             <div 
               key={item.id}
-              className="glass-panel p-6 rounded-2xl border border-slate-800 hover:border-[#00F0FF]/40 transition-all space-y-4 flex flex-col justify-between"
+              className="bg-white p-6 rounded-2xl border border-[#DCE8F5] shadow-xl hover:border-[#C4DCF5] transition-all space-y-4 flex flex-col justify-between"
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="px-2.5 py-0.5 rounded bg-slate-900 text-slate-300 text-[10px] font-mono uppercase border border-slate-700">
+                  <span className="px-2.5 py-0.5 rounded bg-[#F8FAFC] text-slate-700 text-[10px] font-mono uppercase font-bold border border-[#E2E8F0]">
                     {item.category}
                   </span>
                   <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono uppercase font-bold ${
                     item.urgency === 'high' 
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
-                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                      ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                   }`}>
                     {item.status} ({item.dueInKm.toLocaleString()} KM)
                   </span>
                 </div>
 
-                <h3 className="text-xl font-display font-extrabold text-white">
+                <h3 className="text-xl font-display font-extrabold text-[#10233F]">
                   {item.title}
                 </h3>
 
-                <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                <p className="text-xs text-slate-600 leading-relaxed font-sans">
                   {item.description}
                 </p>
 
                 <div className="pt-2 space-y-1.5">
-                  <p className="text-[10px] font-mono text-slate-400 uppercase">CHECKLIST ITEMS:</p>
+                  <p className="text-[10px] font-mono text-slate-500 uppercase font-bold">CHECKLIST ITEMS:</p>
                   {item.tasks.map((task, tIdx) => (
-                    <div key={tIdx} className="flex items-center space-x-2 text-xs text-slate-200">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#00F0FF] shrink-0" />
+                    <div key={tIdx} className="flex items-center space-x-2 text-xs text-slate-700 font-medium">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#0B5ED7] shrink-0" />
                       <span>{task}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
-                <span className="text-[11px] font-mono text-slate-400">INTERVAL: {item.interval}</span>
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <span className="text-[11px] font-mono text-slate-500 font-medium">INTERVAL: {item.interval}</span>
                 <button
                   onClick={() => onAskMaintenanceQuestion(`What is involved in ${item.title} for my car?`)}
-                  className="text-xs font-semibold text-[#00F0FF] hover:underline flex items-center space-x-1"
+                  className="text-xs font-bold text-[#0B5ED7] hover:text-[#2563EB] hover:underline flex items-center space-x-1"
                 >
                   <span>ASK VAYRA</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -149,7 +149,7 @@ export default function MaintenanceHub({ activeVehicle, onAskMaintenanceQuestion
         </div>
 
         {/* Universal Disclaimer Box */}
-        <div className="max-w-3xl mx-auto mt-12 p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-center text-xs font-mono text-slate-400">
+        <div className="max-w-3xl mx-auto mt-12 p-4 rounded-2xl bg-[#EEF6FF] border border-[#C4DCF5] text-center text-xs font-mono text-slate-600">
           *Note: Maintenance intervals presented are general guidelines. Actual service timing depends on specific manufacturer guidelines, vehicle condition, mileage, and driving environment.*
         </div>
 
