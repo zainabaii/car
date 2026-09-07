@@ -34,7 +34,7 @@ export async function handler(event, context) {
     // 2. Determine Agent Badge & Role
     const agentConfig = determineSpecializedAgent(message);
 
-    // 3. Build VAYRA System Prompt with Automotive Expertise & Clear Conversational Persona
+    // 3. Build VAYRA System Prompt focused strictly on CURRENT user message
     const systemPrompt = buildVayraSystemPrompt(vehicle, message);
 
     // 4. API Keys from Environment Variables ONLY
@@ -149,31 +149,33 @@ function buildVayraSystemPrompt(vehicle, userMessage) {
     ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
     : null;
 
-  return `You are VAYRA, a friendly, expert automotive assistant for a car website.
+  return `You are VAYRA, a friendly automotive assistant for a car website.
 Tagline: "Know Your Car. Care Smarter."
 
-VEHICLE CONTEXT:
-${hasVehicle ? `Customer's Vehicle: ${vehicleStr} (Engine: ${vehicle.engine || 'N/A'}, VIN: ${vehicle.vin || 'N/A'})` : 'No specific vehicle selected. If the customer mentions year, make, or model in their prompt, reference that vehicle directly.'}
+VEHICLE INFORMATION:
+${hasVehicle ? `Customer's Vehicle: ${vehicleStr} (Engine: ${vehicle.engine || 'N/A'}, VIN: ${vehicle.vin || 'N/A'})` : 'No specific vehicle selected in garage. If mentioned in prompt, reference that vehicle directly.'}
 
-YOUR GOAL:
-Help customers understand common vehicle problems in simple, clear, friendly language.
+VERY IMPORTANT CONTEXT RULE — ANSWER THE CURRENT QUESTION:
+- Always read and respond specifically to the problem described in the customer's LATEST/CURRENT message.
+- NEVER repeat a previous answer if the customer changes symptoms or asks about a different problem.
+- If the customer switches topics (e.g. from AC to brakes, battery to tire pressure, or overheating to shaking/vibration), COMPLETELY change your answer to match the new problem.
+- Never use AC guidance for overheating. Never use battery guidance for shaking or tires. Never use brake guidance for starting issues.
 
-HOW YOU MUST ANSWER:
-1. Identify the 2–3 most likely possible causes in simple terms.
-2. Explain them simply without overwhelming mechanical jargon. If you use a technical term, explain it simply.
-3. Give 2–4 safe, easy things the customer can check.
-4. Tell the customer when they should visit a mechanic.
-5. Ask 1 or 2 useful follow-up questions to help narrow down the cause.
-6. Keep normal answers short — preferably 4 to 8 sentences total.
-7. Tone: Friendly, helpful, professional, simple, and concise. Do NOT sound like a rigid repair manual.
-8. If vehicle information is missing, give helpful general advice and ask for the vehicle year, make, and model.
+HOW TO ANSWER:
+1. Identify the main problem in the CURRENT message and list 2–3 most likely possible causes.
+2. Explain them in simple, clear language without complicated mechanical jargon. Use words such as "may," "could," and "possible".
+3. Give 2–4 safe things the customer can check.
+4. Ask 1 or 2 useful follow-up questions to help narrow down the cause.
+5. Tell the customer when they should see a qualified mechanic.
+6. Keep normal answers short and easy to understand — preferably 4 to 8 sentences total.
+7. If vehicle information is missing, give general guidance and ask for the year, make, and model when useful.
 
 CRITICAL SAFETY RULES:
-- If the problem is dangerous (e.g. Engine Overheating, Brake Failure, Oil Warning Light, Steering Loss, Fuel Leak, Flashing Check Engine Light), clearly urge stopping the vehicle safely and seeking professional help immediately.
-- NEVER instruct customers to open a hot radiator cap, handle pressurized refrigerant/fuel, work under a car supported only by a jack, or touch moving belts.
+- If the problem could be dangerous (e.g. Engine Overheating, Brake Failure, Flashing Check Engine Light, Oil Warning Light, Steering Loss, Fuel Leak), clearly advise stopping the vehicle safely and getting professional help.
+- NEVER tell customers to open a hot radiator cap, handle pressurized refrigerant/fuel, work under a vehicle supported only by a jack, work near moving belts/fans, or disable safety systems.
 
 DISCLAIMER REQUIREMENT:
-Never claim a confirmed diagnosis. Always state possible causes. VAYRA provides general automotive guidance, not a confirmed mechanical diagnosis.`;
+VAYRA provides general automotive guidance and does not replace a qualified mechanic's diagnosis.`;
 }
 
 // Intent Classification Engine for UI Badging
@@ -232,6 +234,7 @@ async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
 
   const contents = [];
 
+  // Pass conversation history but explicitly prioritize current user query
   if (Array.isArray(conversation)) {
     for (const msg of conversation) {
       if (!msg || !msg.text) continue;
@@ -247,7 +250,7 @@ async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
 
   contents.push({
     role: 'user',
-    parts: [{ text: userMessage }]
+    parts: [{ text: `[IMPORTANT DIRECTIVE: Answer the problem described in this latest message. If symptom changed, switch topic completely!]\n\nCurrent Customer Message: ${userMessage}` }]
   });
 
   const body = {
@@ -256,7 +259,7 @@ async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
     },
     contents,
     generationConfig: {
-      temperature: 0.3,
+      temperature: 0.2,
       maxOutputTokens: 500
     }
   };
@@ -324,7 +327,7 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
 
   messages.push({
     role: 'user',
-    content: userMessage
+    content: `[IMPORTANT DIRECTIVE: Answer the problem described in this latest message. If symptom changed, switch topic completely!]\n\nCurrent Customer Message: ${userMessage}`
   });
 
   let lastErr = null;
@@ -343,7 +346,7 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
         body: JSON.stringify({
           model: modelName,
           messages,
-          temperature: 0.3,
+          temperature: 0.2,
           max_tokens: 500
         }),
         signal: controller.signal
@@ -380,42 +383,42 @@ function generateExpertAutomotiveFallback(agentId, message, vehicle) {
 
   // 1. AC Not Cooling
   if (text.includes('ac') || text.includes('warm air') || text.includes('air condition') || text.includes('cooling')) {
-    return `Your ${vName} AC may not be cooling because of low refrigerant, a compressor problem, or an issue with the air-mixing system. Check whether the air gets colder while driving and whether you hear the AC compressor engage when you turn it on. If it still blows warm air, an AC technician should check the refrigerant and system for leaks.
+    return `Your ${vName} AC may not be cooling because of low refrigerant or a refrigerant leak, an AC compressor or clutch problem, a dirty/blocked condenser, or a blend-door/HVAC issue. Check whether the air gets colder while driving and whether you hear the AC compressor engage when you turn it on. If it still blows warm air, an AC technician should check the refrigerant and system for leaks.
 
 Does the AC get colder while driving, or is it warm all the time?`;
   }
 
   // 2. Engine Overheating
-  if (text.includes('overheat') || text.includes('hot') || text.includes('temperature')) {
-    return `Your ${vName} engine may be overheating because of low coolant, a coolant leak, or a problem with the radiator or cooling fan. If the temperature gauge is in the red or you see steam, safely stop the car and turn off the engine. Do not open the radiator cap while the engine is hot.
+  if (text.includes('overheat') || text.includes('hot') || text.includes('temperature') || text.includes('steam')) {
+    return `Your ${vName} engine may be overheating because of low coolant, a coolant leak, a radiator or cooling-fan problem, or a thermostat/water-pump issue. If the temperature gauge is in the red or you see steam, safely stop the car and turn off the engine immediately. Do not open the radiator cap while the engine is hot.
 
 Is the temperature warning light on, and do you see any coolant leaking under the car?`;
   }
 
-  // 3. Battery / Starting Issue
+  // 3. Car Won't Start / Battery
   if (text.includes('start') || text.includes('battery') || text.includes('crank') || text.includes('dead')) {
-    return `If your ${vName} won't start, the battery may be weak or the battery connections may be loose or corroded. If you hear clicking when you try to start the car, the battery could be low. If the battery keeps going dead after being charged, the alternator may need to be checked.
+    return `If your ${vName} won't start, the battery may be weak or dead, the battery connections may be loose or corroded, or the starter motor/alternator may have a problem. If you hear clicking when you try to start the car, the battery could be low. If the battery keeps going dead after being charged, the alternator may need to be checked.
 
 Do you hear clicking when you turn the key or press the start button?`;
   }
 
   // 4. Check Engine Light
   if (text.includes('check engine') || text.includes('engine light') || text.includes('warning light')) {
-    return `A check-engine light can come on for many reasons, from a loose fuel cap to an engine or sensor problem. If the light is steady, you can usually have the car checked soon. If the light is flashing or the engine is running badly, stop driving if it is safe to do so and have it inspected.
+    return `A check-engine light can come on for many reasons, from a loose fuel cap to an engine, sensor, ignition, or emissions problem. If the light is steady, you can usually have the car checked soon. If the light is flashing or the engine is running badly, stop driving if it is safe to do so and have it inspected.
 
 Is the check-engine light steady or flashing?`;
   }
 
   // 5. Brake Problems
   if (text.includes('brake') || text.includes('stopping') || text.includes('squeal') || text.includes('grind')) {
-    return `If your brakes feel weak, make grinding or squealing sounds, or the brake pedal feels unusual, the brake pads or another part of the braking system may need attention. Because brakes are safety-critical, it is best to have them inspected promptly. If the pedal goes to the floor or the car cannot stop normally, do not continue driving.
+    return `If your brakes feel weak, make grinding or squealing sounds, or the brake pedal feels unusual, the brake pads, fluid, or rotors may need attention. Because brakes are safety-critical, it is best to have them inspected promptly. If the pedal goes to the floor or the car cannot stop normally, do not continue driving.
 
 Does the brake pedal feel soft, hard, or normal?`;
   }
 
-  // 6. Car Shaking
-  if (text.includes('shake') || text.includes('vibrat') || text.includes('wobble')) {
-    return `Car shaking can come from tires, wheel balance, brakes, or an engine-related problem. If the shaking happens mainly at higher speeds, the tires or wheels may be worth checking first. If it happens mainly while braking, the brakes may need inspection.
+  // 6. Car Shaking or Vibrating
+  if (text.includes('shake') || text.includes('vibrat') || text.includes('wobble') || text.includes('shimmy')) {
+    return `Car shaking can come from tire balance problems, wheel alignment or uneven tire wear, bent rims, or suspension issues. If the shaking happens mainly at higher speeds through the steering wheel, the front tires and wheels are worth checking first. If it happens mainly while braking, the brake rotors may need inspection.
 
 Does the shaking happen while driving normally, accelerating, or braking?`;
   }
@@ -436,26 +439,26 @@ Did the fuel economy get worse suddenly or gradually?`;
 
   // 9. Strange Noise
   if (text.includes('noise') || text.includes('sound') || text.includes('squeak') || text.includes('rattle') || text.includes('clunk')) {
-    return `A strange noise can come from several parts of the car, including the engine, brakes, tires, or suspension. The location and timing of the noise can help narrow it down. If the noise is loud, sudden, or accompanied by a warning light, have the vehicle inspected promptly.
+    return `A strange noise can come from several parts of the car, including the engine, belts, brakes, tires, or suspension. The location and timing of the noise can help narrow it down. If the noise is loud, sudden, or accompanied by a warning light, have the vehicle inspected promptly.
 
 Where does the noise seem to come from, and does it happen while braking, accelerating, or turning?`;
   }
 
   // 10. Steering Problem
   if (text.includes('steer') || text.includes('power steering') || text.includes('wheel hard')) {
-    return `If the steering suddenly becomes very heavy, loose, or difficult to control, there may be a problem with the steering system, tires, or suspension. Because steering is safety-critical, avoid driving the vehicle if you cannot control it normally and have it inspected.
+    return `If the steering suddenly becomes very heavy, loose, or difficult to control, there may be a problem with the steering system, tire pressure, or suspension. Because steering is safety-critical, avoid driving the vehicle if you cannot control it normally and have it inspected.
 
 Did the steering problem happen suddenly or gradually?`;
   }
 
   // 11. Transmission Problems
   if (text.includes('transmission') || text.includes('gear') || text.includes('shift') || text.includes('slip')) {
-    return `If your car is slipping, jerking, delaying when changing gears, or making unusual transmission noises, there may be a transmission or fluid-related problem. Avoid hard acceleration until the problem is checked. A qualified technician can inspect the transmission and fluid condition.
+    return `If your car is slipping, jerking, delaying when changing gears, or making unusual transmission noises, there may be a transmission fluid or component problem. Avoid hard acceleration until the problem is checked. A qualified technician can inspect the transmission and fluid condition.
 
 Does the car jerk, slip, or have trouble changing gears?`;
   }
 
-  // 12. Flat or Losing Tire Pressure
+  // 12. Tire Losing Air / Flat Tire
   if (text.includes('tire') || text.includes('flat') || text.includes('pressure') || text.includes('puncture')) {
     return `If a tire is losing air, it may have a puncture, valve leak, or tire damage. Check the tire pressure and look for obvious damage, but do not drive on a severely underinflated or damaged tire. Have the tire inspected and repaired or replaced if necessary.
 
@@ -463,7 +466,7 @@ How quickly is the tire losing air?`;
   }
 
   // Default Guidance
-  return `If your ${vName} is experiencing an unexpected issue, common causes include sensor or electrical variances, restricted filters or fluids, or normal mechanical component wear. You can check your dashboard for warning lights and verify your fluid levels when parked on level ground.
+  return `If your ${vName} is experiencing an unexpected issue, common causes include minor sensor variances, maintenance items like filters or fluids, or normal component wear over time. You can check your dashboard for warning lights and verify your fluid levels when parked on level ground.
 
-What car do you have (including the year and model), and when does the problem happen — while starting, driving, braking, or idling?`;
+What car do you have, including the year and model, and when does the problem happen — when starting, driving, braking, accelerating, or idling?`;
 }
