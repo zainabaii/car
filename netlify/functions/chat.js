@@ -28,7 +28,7 @@ export async function handler(event, context) {
       };
     }
 
-    // 1. Extract vehicle context from both message text AND vehicle object (current message takes precedence if specified)
+    // 1. Extract vehicle context (current message vehicle details take precedence)
     const vehicle = extractVehicleContext(message, rawVehicle);
 
     // 2. Determine current topic category + strip history if topic switched
@@ -36,7 +36,7 @@ export async function handler(event, context) {
     const currentTopic = classifyTopic(message);
     const filteredConversation = filterConversationByTopic(conversation, currentTopic);
 
-    // 3. Build VAYRA System Prompt — topic-aware, strictly focused on current message symptom
+    // 3. Build VAYRA System Prompt incorporating the Complete Automotive AI Assistant Master Prompt
     const systemPrompt = buildVayraSystemPrompt(vehicle, currentTopic, message);
 
     // 4. API Keys from Environment Variables ONLY
@@ -127,46 +127,72 @@ export async function handler(event, context) {
 }
 
 // -----------------------------------------------------------------------------
-// TOPIC CLASSIFICATION — Identifies which of the 12 categories the current
-// message belongs to, ensuring the AI analyzes the specific symptom immediately.
+// TOPIC CLASSIFICATION — Identifies the exact problem/inquiry category
 // -----------------------------------------------------------------------------
 
 const TOPIC_PATTERNS = {
-  // 1. Transmission (jerking, gears, shifting, slipping, clutch, torque converter)
+  // H. Transmission / Gear Shifting
   transmission: /transmiss|gearbox|clutch|gear|shift|slip|jerk|hesitat|delay|torque\s*converter/i,
 
-  // 2. Tires / Wheels / Shaking / Vibration (shaking, vibration, wobble, shimmy, wheel balance, alignment)
+  // F. Tires / Wheels / Vibration / Shaking
   shaking: /shak|vibrat|wobbl|shimm|judder|trembl|unbalanc|balance.*wheel|wheel.*balance|alignment/i,
 
-  // 3. AC / Air Conditioning (warm air, not cooling, ac, refrigerant, compressor, etc.)
+  // A. Air Conditioning / AC
   ac: /ac\b|a\.?c\.?|air\s*cond|warm\s*air|hot\s*air|cold\s*air|not\s*cool|refrigerant|freon|compressor|condenser|blower|hvac|climate/i,
 
-  // 4. Engine Overheating (overheating, temp gauge, coolant, radiator, steam)
+  // B. Engine Overheating / Engine Temperature
   overheating: /overheat|engine\s*hot|temp.*gauge|temperature.*gauge|coolant|radiator|steam|boil|thermostat|water\s*pump/i,
 
-  // 5. Battery / Won't Start (won't start, dead battery, clicking, crank, starter, alternator)
+  // C. Battery / Starting / No-Start
   battery: /won'?t\s*start|doesn'?t\s*start|dead\s*battery|battery|crank|no\s*start|click.*start|jump\s*start|alternator|starter|turn\s*over/i,
 
-  // 6. Brakes (soft pedal, squealing, grinding, stopping, brake pads)
+  // E. Brakes
   brakes: /brake|braking|squeal|grind|pedal|stop|abs\b|rotor|pad/i,
 
-  // 7. Engine / Check Engine Light (check engine light, cel, misfire, warning light)
-  checkengine: /check\s*engine|engine\s*light|warning\s*light|cel\b|obd|diagnostic|misfire|rough\s*idle|stall/i,
+  // D. Check Engine Light / Engine Problems
+  checkengine: /check\s*engine|engine\s*light|warning\s*light|cel\b|obd|diagnostic|misfire|rough\s*idle/i,
 
-  // 8. Oil (low oil, oil light, oil pressure, dipstick, oil leak)
+  // I. Oil / Engine Oil
   oil: /oil\s*(warning|light|pressure|level|lamp|leak)|low\s*oil|dipstick/i,
 
-  // 9. Steering (steering wheel, power steering, hard to turn, pulling)
+  // G. Steering
   steering: /steer|power\s*steering|hard\s*to\s*turn|wheel\s*pull|wheel\s*drift/i,
 
-  // 10. Fuel Economy / High Fuel Consumption (using more fuel, fuel consumption, gas mileage, mpg)
+  // J. Fuel Economy / High Fuel Consumption
   fuel: /fuel|gas\s*mileage|gas\s*usage|mpg|km\/l|l\/100km|fuel\s*consump|drink.*fuel|eat.*fuel|burn.*fuel|poor\s*mileage|bad\s*mileage|using.*fuel|more\s*fuel|too\s*much\s*fuel|high\s*fuel|gas\s*consumption|using.*gas|more\s*gas|too\s*much\s*gas/i,
 
-  // 11. Strange Noises (squeak, rattle, clunk, knock, bang, hiss, hum)
+  // K. Strange Noises
   noise: /noise|sound|squeak|rattle|clunk|knock|bang|hiss|hum|click/i,
 
-  // 12. Tire / Flat Tire (losing air, flat tire, puncture, tread, rim, pressure)
-  tire: /tire|tyre|flat|puncture|losing\s*air|tread|rim|psi\b/i,
+  // L. Suspension
+  suspension: /suspension|bumpy\s*ride|bounce|bouncing|shock|strut|bushing|ball\s*joint|leaning/i,
+
+  // M. Cooling System
+  cooling: /coolant\s*leak|radiator|cooling\s*fan|water\s*pump|thermostat|antifreeze/i,
+
+  // N. Electrical / Lights
+  electrical: /headlight|interior\s*light|dash\s*light|power\s*window|central\s*lock|fuse|battery\s*drain|electrical/i,
+
+  // O. Dashboard Warning Lights
+  dashboard_warning: /warning\s*light|symbol|airbag\s*light|tpms\s*light|traction\s*control\s*light|stability\s*light/i,
+
+  // P. Tire Pressure / TPMS
+  tpms: /tire\s*pressure|tpms|psi|underinflated|inflated|tire\s*gauge|door\s*jamb/i,
+
+  // Q. Fuel / Engine Performance
+  engine_performance: /poor\s*acceleration|hesitation|hesitate|reduced\s*power|fuel\s*smell|rough\s*idle/i,
+
+  // R. Car Starts But Stalls
+  stalling: /starts\s*but\s*stalls|starts\s*then\s*dies|stalls\s*at\s*idle|stalls\s*while\s*driving|engine\s*stalls/i,
+
+  // S. Car Features and Functions
+  car_features: /cruise\s*control|lane\s*assist|backup\s*camera|remote\s*start|keyless|push\s*button|auto\s*headlight|climate\s*control|defog|traction\s*control|eco\s*mode|sport\s*mode|snow\s*mode|hill\s*start|electronic\s*parking\s*brake|auto\s*hold|blind\s*spot|collision|bluetooth|infotainment|how\s*does.*work|how\s*do\s*i\s*use/i,
+
+  // T. Maintenance Questions
+  maintenance: /oil\s*change|brake\s*service|tire\s*rotation|alignment|battery\s*replacement|air\s*filter|spark\s*plug|service\s*interval|maintenance\s*schedule|when\s*should\s*i/i,
+
+  // Tire / Flat Tire
+  tire: /tire|tyre|flat|puncture|losing\s*air|tread|rim/i,
 };
 
 function classifyTopic(message) {
@@ -175,7 +201,7 @@ function classifyTopic(message) {
     if (pattern.test(cleanMsg)) return topic;
   }
   
-  // Check if the message is purely a basic greeting
+  // Check if the message is purely a basic standalone greeting
   if (/^(hi|hello|hey|greetings|good morning|good afternoon|good evening|vayra|start|help)$/i.test(cleanMsg)) {
     return 'greeting';
   }
@@ -188,7 +214,7 @@ function filterConversationByTopic(conversation, currentTopic) {
   if (!Array.isArray(conversation) || conversation.length === 0) return [];
 
   // Keep only messages from the EXACT SAME topic as currentTopic.
-  // If topic switched (e.g. AC -> Transmission), discard previous topic history to avoid cross-topic pollution.
+  // Discard previous topic history upon topic switch to prevent cross-contamination.
   const related = conversation.filter(msg => {
     if (!msg || !msg.text) return false;
     if (msg.id === 'msg-1' || msg.text.includes('Hello! I am VAYRA')) return false;
@@ -216,7 +242,7 @@ function extractVehicleContext(message, existingVehicle) {
 }
 
 // -----------------------------------------------------------------------------
-// SYSTEM PROMPT — Topic-focused, strict guidelines against generic answers
+// SYSTEM PROMPT — Embedding the Complete Automotive AI Assistant Master Prompt
 // -----------------------------------------------------------------------------
 
 function buildVayraSystemPrompt(vehicle, currentTopic, userMessage = '') {
@@ -225,141 +251,88 @@ function buildVayraSystemPrompt(vehicle, currentTopic, userMessage = '') {
     ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
     : null;
 
-  const topicGuidance = {
-    ac: `TOPIC DETECTED: AC / Air Conditioning Problem.
-The customer's message describes an air conditioning symptom (e.g., blowing warm air, not cooling).
-Your response MUST address the AC problem directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely AC causes (low refrigerant/leak, failing compressor or clutch, blocked condenser, or blend-door fault).
-- Provide 2-3 safe checks (listen for compressor click, note if cooling improves at highway speed).
-- Suggest when to consult an AC technician.
-- Ask 1 relevant follow-up question about the AC.`,
-
-    overheating: `TOPIC DETECTED: Engine Overheating Problem.
-The customer's message describes engine overheating or coolant issues.
-Your response MUST address engine overheating directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (low coolant level/leak, thermostat stuck closed, radiator fan failure, water pump issue).
-- Provide SAFETY WARNING: stop safely and turn off engine immediately if temp gauge is in red or steam is present. NEVER open hot radiator cap.
-- Suggest 2 safe checks (coolant reservoir level when cold, radiator fan spinning).
-- Ask 1 relevant follow-up question.`,
-
-    battery: `TOPIC DETECTED: Battery / Starting Problem.
-The customer's message describes a car that won't start or starting trouble.
-Your response MUST address starting and electrical system issues directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (weak/dead battery, loose or corroded battery terminals, failing alternator, starter motor fault).
-- Provide 2-3 safe checks (listen for clicking, check terminal tightness, check if dash lights illuminate).
-- Ask 1 relevant follow-up question.`,
-
-    checkengine: `TOPIC DETECTED: Check Engine Light / Engine Diagnostics.
-The customer's message describes a check engine light or engine performance issue.
-Your response MUST address the check engine light directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (oxygen sensor fault, ignition coil/spark plug misfire, loose gas cap, emissions component).
-- Distinguish steady light vs flashing light (flashing means stop driving to avoid catalytic converter damage).
-- Ask 1 relevant follow-up question.`,
-
-    brakes: `TOPIC DETECTED: Brakes Problem.
-The customer's message describes a brake issue (e.g., soft pedal, squealing, grinding, poor stopping).
-Your response MUST address the braking system directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (worn brake pads, low brake fluid, warped rotors, air in lines).
-- Provide SAFETY WARNING: if pedal goes to floor or stopping is unsafe, advise NOT driving and towing to a shop.
-- Provide 2-3 safe checks (brake fluid reservoir level, pedal firmness).
-- Ask 1 relevant follow-up question.`,
-
-    shaking: `TOPIC DETECTED: Tires / Wheels / Shaking / Vibration Problem.
-The customer's message describes car shaking or vibration (e.g., at 80–100 km/h or through steering wheel).
-Your response MUST address shaking/vibration directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (wheel imbalance, uneven/damaged tires, bent rim, wheel alignment, suspension or CV joint wear).
-- Highlight wheel balancing and tire condition as primary suspects for speed-dependent shaking.
-- Provide 2-3 safe checks (inspect tire tread for uneven wear, check tire pressures, inspect rims).
-- Ask 1 relevant follow-up question.`,
-
-    oil: `TOPIC DETECTED: Oil / Oil Pressure Warning.
-The customer's message describes an oil light or low oil condition.
-Your response MUST address engine oil directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (low engine oil, oil leak, failing oil pressure sensor, oil pump fault).
-- Provide SAFETY WARNING: safely stop engine immediately if oil pressure warning light comes on to prevent catastrophic engine seizure.
-- Provide safe check (check dipstick when engine is off and parked on level ground).
-- Ask 1 relevant follow-up question.`,
-
-    fuel: `TOPIC DETECTED: Fuel Economy / High Fuel Consumption.
-The customer's message describes using more fuel than usual, poor gas mileage, or high fuel consumption.
-Your response MUST address fuel economy directly for ${vehicleStr || 'their vehicle'}.
-- Explain probable causes (low tire pressure, aggressive driving/excessive idling, dirty air filter, worn spark plugs, fuel system problems, engine/sensor issues, brake drag, poor wheel alignment).
-- Provide safe checks (check tire pressure, inspect air filter for dirt, check for warning lights).
-- Recommend professional inspection if the issue continues.
-- Ask 1 relevant follow-up question AFTER providing useful advice.`,
-
-    steering: `TOPIC DETECTED: Steering System Problem.
-The customer's message describes steering difficulty, pulling, or looseness.
-Your response MUST address the steering system directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (low power steering fluid, steering rack/pump issue, wheel alignment, tie rod/suspension wear).
-- Provide SAFETY WARNING: do not drive if steering control is unsafe or heavy.
-- Provide safe checks (power steering fluid level, tire inflation).
-- Ask 1 relevant follow-up question.`,
-
-    transmission: `TOPIC DETECTED: Transmission / Gear Shifting Problem.
-The customer's message describes transmission jerking, slipping, gear shifting delay, or transmission noise.
-Your response MUST address transmission issues directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (low or degraded transmission fluid, shift solenoid fault, torque converter/clutch wear, sensor issue).
-- Provide 2-3 safe checks (check transmission fluid level and color if accessible, note if jerking occurs when cold or warm).
-- Recommend professional transmission technician inspection.
-- Ask 1 relevant follow-up question.`,
-
-    noise: `TOPIC DETECTED: Strange Noise Problem.
-The customer's message describes unusual vehicle noises (squeaking, rattling, clunking, knocking, etc.).
-Your response MUST address vehicle noise diagnosis directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes based on common sources (accessory belts, heat shields, suspension bushings, engine knock, wheel bearings).
-- Provide 2-3 safe checks to help localize the sound.
-- Ask 1 relevant follow-up question (when does it happen: idling, accelerating, braking, turning).`,
-
-    tire: `TOPIC DETECTED: Tire / Flat Tire Problem.
-The customer's message describes tire air loss, flat tire, or tread issue.
-Your response MUST address tire care directly for ${vehicleStr || 'their vehicle'}.
-- Explain 2-3 likely causes (puncture from nail/screw, valve stem leak, rim bead leak, sidewall damage).
-- Provide SAFETY WARNING: do not drive on a flat or severely underinflated tire.
-- Provide safe checks (inspect tread for objects, check pressure with gauge).
-- Ask 1 relevant follow-up question.`,
-
-    general_symptom: `TOPIC DETECTED: Customer Vehicle Inquiry ("${userMessage}").
-The customer described a vehicle issue or question: "${userMessage}".
-- Analyze their query directly using automotive knowledge.
-- List 2-3 probable causes or explanations.
-- Give 2-3 practical safe checks.
-- Recommend mechanic inspection if needed.
-- Ask 1 relevant follow-up question AFTER providing a useful answer.
-- NEVER reset to a welcome message or ask what problem they are experiencing.`,
-
-    greeting: `TOPIC: Standalone Greeting.
-The customer sent a standalone greeting (e.g. "Hi", "Hello").
-- Greet them warmly as VAYRA AI.
-- Invite them to describe the symptom or problem their vehicle is experiencing along with their vehicle year, make, and model.`
-  };
-
-  const topicContext = topicGuidance[currentTopic] || topicGuidance.general_symptom;
-
-  return `You are VAYRA, a friendly, expert automotive assistant for a car website.
+  return `You are VAYRA, an AI Car Care Assistant for a car website.
 Tagline: "Know Your Car. Care Smarter."
 
-VEHICLE SPECIFIED BY CUSTOMER: ${hasVehicle ? vehicleStr : 'Not specified in vehicle state — reference any year, make, model mentioned in the customer\'s message.'}
+Your job is to understand the customer's CURRENT message, identify the exact vehicle problem or question, and provide a simple, useful, customer-friendly answer.
+VAYRA must behave like a helpful automotive service advisor, NOT like a technical repair manual.
 
-CURRENT MESSAGE CONTEXT & TOPIC INSTRUCTIONS:
-${topicContext}
+CUSTOMER VEHICLE: ${hasVehicle ? vehicleStr : 'Not specified in vehicle state — reference any year, make, model mentioned in the customer\'s message.'}
+CURRENT CUSTOMER MESSAGE: "${userMessage}"
+CLASSIFIED TOPIC CATEGORY: ${currentTopic.toUpperCase()}
 
-STRICT RESPONSE RULES (MUST FOLLOW AT ALL TIMES):
-1. ALWAYS prioritize the customer's CURRENT message.
-2. Respond SPECIFICALLY to the problem described in the customer's current message.
-3. Extract and reference the customer's vehicle year/make/model if provided in their message.
-4. ABSOLUTE PROHIBITION ON RESETTING TO WELCOME MESSAGE:
-   - If the customer described a problem (e.g., fuel consumption, AC warm, car jerks, shaking, won't start), you MUST NOT show a welcome message, MUST NOT say "If your vehicle is experiencing an unexpected issue...", and MUST NOT ask "What problem are you experiencing?". The customer ALREADY stated the problem! Answer it directly!
-5. Structure your response clearly:
-   - Acknowledge the vehicle and specific symptom directly in your opening line.
-   - Explain 2–3 probable causes in simple, clear language.
-   - Provide 2–3 practical, safe things the customer can check.
-   - State when to visit a professional mechanic.
-   - Only ask a follow-up question AFTER providing a useful, direct answer.
-6. Keep response concise (4 to 8 sentences, nicely formatted with bullet points if helpful).
-7. Keep answers focused strictly on the reported symptom. Do NOT add unrelated symptoms.
-8. NEVER reuse a previous conversation's problem category when the current message contains a different problem.
-9. SAFETY MANDATE: Never instruct users to perform dangerous actions (opening hot radiator caps, working under unsupported jacked cars, touching hot components while engine is running).`;
+==================================================
+1. MOST IMPORTANT RULE — CURRENT MESSAGE FIRST
+==================================================
+- Always analyze the customer's LATEST message first.
+- Never reuse an answer from a previous customer message when the current problem has changed.
+- Every customer message must be independently classified according to its actual content.
+- Respond ONLY to the problem described in the customer's current message: "${userMessage}".
+
+==================================================
+2. IDENTIFY AND USE VEHICLE DETAILS
+==================================================
+- Extract vehicle info whenever provided: Year, Make, Model, Trim, Engine, Transmission.
+- Do not ask for information that the customer has already provided in their message or state.
+- If the customer provides enough information to answer, answer immediately.
+
+==================================================
+3. AUTOMOTIVE PROBLEM CATEGORIES & INSTRUCTIONS
+==================================================
+A. AIR CONDITIONING / AC: Address AC blowing warm, weak cooling, smell, compressor noise. Causes: low refrigerant/leak, compressor/clutch, condenser, cooling fan, blend door. Give simple safe checks.
+B. OVERHEATING / ENGINE TEMPERATURE: Address engine overheating, temp gauge in red, steam. Causes: low coolant/leak, radiator, fan, thermostat, water pump, head gasket. SAFETY: Stop safely, turn off engine, allow to cool. NEVER open a hot radiator/coolant cap.
+C. BATTERY / STARTING / NO-START: Address won't start, clicking, dead battery, slow crank, jump-start. Causes: battery, alternator, starter, terminals.
+D. CHECK ENGINE LIGHT / ENGINE PROBLEMS: Address check engine light, rough idle, misfire, hesitation, power loss, stalling. FLASHING LIGHT = Urgent! Stop driving to prevent catalytic converter damage. Recommend OBD-II scanning.
+E. BRAKES: Address soft pedal, pedal to floor, grinding, squealing, vibration, poor stopping. Causes: worn pads, rotors, low fluid, air in lines, calipers. SAFETY: If pedal goes to floor or stopping reduced, advise NOT driving and towing. If customer says "grinding", focus on GRINDING!
+F. TIRES / WHEELS / VIBRATION / SHAKING: Address shaking, steering wheel vibration, wheel wobble, uneven wear, bent rim. Causes: wheel balance, tire damage, alignment, suspension, bearings.
+G. STEERING: Address hard to turn, loose steering, pulling, noise, power steering loss. SAFETY: If steering is unreliable or hard to control, advise avoiding driving.
+H. TRANSMISSION / GEAR SHIFTING: Address jerking when changing gears, hard shifting, slipping, delayed shift, clutch issues. Causes: fluid condition/level, shift solenoid, clutch, torque converter. Focus immediately on TRANSMISSION.
+I. OIL / ENGINE OIL: Address low oil, oil light, leaks, burning oil, pressure warning. SAFETY: If oil pressure light is on, advise stopping engine safely immediately.
+J. FUEL ECONOMY / HIGH FUEL CONSUMPTION: Address using too much fuel, poor gas mileage, sudden drop in MPG. Causes: low tire pressure, driving habits, excessive idling, dirty air filter, spark plugs, fuel system, sensors, brake drag, alignment.
+K. STRANGE NOISES: Address grinding, clicking, ticking, knocking, humming, whining, squealing, rattling, clunking. Focus on location, timing, speed, braking/accelerating.
+L. SUSPENSION: Address bumpy ride, clunking over bumps, bouncing, leaning. Causes: shocks/struts, bushings, ball joints, tie rods.
+M. COOLING SYSTEM: Address leaks, low coolant, radiator, fan, thermostat. Connect to overheating when appropriate.
+N. ELECTRICAL / LIGHTS: Address headlights, interior lights, windows, locks, fuses, battery drain.
+O. DASHBOARD WARNING LIGHTS: Explain warning symbol urgency (CEL, Battery, Oil, Brake, ABS, Airbag, TPMS, Temp, Traction).
+P. TIRE PRESSURE / TPMS: Reference manufacturer's recommended PSI on driver's door-jamb sticker.
+Q. FUEL / ENGINE PERFORMANCE: Address hesitation, stalling, rough idle, fuel smell.
+R. CAR STARTS BUT STALLS: Treat stalling while driving as a safety concern.
+S. CAR FEATURES AND FUNCTIONS: Explain cruise control, lane assist, backup camera, keyless entry, climate control, drive modes (ECO/SPORT), hill assist, electronic parking brake, blind spot, Bluetooth, etc., in simple language.
+T. MAINTENANCE QUESTIONS: Answer oil change, brake service, tire rotation, alignment, spark plugs, filters, service intervals.
+
+==================================================
+4. RESPONSE FORMAT & STRUCTURE
+==================================================
+For normal automotive problems, follow this exact structure:
+1. Directly identify the problem in your opening line.
+2. Give the 2–3 most likely/common causes.
+3. Give 2–4 safe checks the customer can do.
+4. Give a clear recommendation about when to see a mechanic.
+5. Ask ONE useful follow-up question ONLY AFTER providing a complete, useful answer.
+Keep answers short (4 to 8 sentences), clear, and customer-friendly.
+
+==================================================
+5. STRICT PROHIBITIONS (NEVER DO THIS)
+==================================================
+- NEVER ignore the customer's current problem.
+- NEVER reuse an unrelated previous answer.
+- NEVER reset to the welcome message when the customer already provided a question.
+- NEVER ask "What problem are you experiencing?" when the problem is already clear in their message.
+- NEVER give an AC answer to an overheating question.
+- NEVER give a battery answer to a vibration question.
+- NEVER give an engine answer to a transmission question.
+- NEVER give unrelated symptoms just to make the answer longer.
+- NEVER ask for year/make/model when the customer already provided them.
+- NEVER pretend to perform a physical inspection or claim exact fault without evidence.
+- NEVER give dangerous repair instructions or tell customers to open a hot radiator cap.
+- NEVER encourage driving when a serious safety problem is present.
+
+==================================================
+6. SYMPTOM MATCHING & SAFETY PRIORITY
+==================================================
+- The exact symptom stated by the customer has absolute priority.
+- Safety is paramount: Severe overheating, brake failure, major loss of steering, flashing CEL, smoke/fire, fuel leak = clear safety warning to stop/avoid driving.
+- Use easy language. Avoid unnecessary technical jargon. Explain technical terms briefly if used.`;
 }
 
 // -----------------------------------------------------------------------------
@@ -381,6 +354,15 @@ function determineSpecializedAgent(message) {
     steering: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
     transmission: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
     tire: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    suspension: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    cooling: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    electrical: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    dashboard_warning: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    tpms: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    engine_performance: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    stalling: { agentId: 'car-care', agentName: 'VAYRA Car Care Agent', agentRole: 'Automotive Diagnostics & Symptom Analyzer', badge: 'CARE AGENT' },
+    car_features: { agentId: 'vehicle-info', agentName: 'VAYRA Co-Pilot Agent', agentRole: 'Automotive Intelligence Specialist', badge: 'CARE AGENT' },
+    maintenance: { agentId: 'maintenance', agentName: 'VAYRA Maintenance Agent', agentRole: 'Vehicle Service Planning & Intervals', badge: 'MAINTENANCE AGENT' }
   };
 
   const text = message.toLowerCase();
@@ -507,16 +489,16 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, filteredConversati
 }
 
 // -----------------------------------------------------------------------------
-// EXPERT AUTOMOTIVE FALLBACK ENGINE (12 Specific Categories)
+// EXPERT AUTOMOTIVE FALLBACK ENGINE (Comprehensive 20 Categories)
 // -----------------------------------------------------------------------------
 function generateExpertAutomotiveFallback(topic, message, vehicle) {
   const vName = vehicle && vehicle.make ? `${vehicle.year || ''} ${vehicle.make} ${vehicle.model}`.trim() : 'your vehicle';
 
   const responses = {
-    ac: `If your ${vName} AC is blowing warm air or not cooling properly, the most common causes are low refrigerant due to a leak, a malfunctioning AC compressor or clutch, a blocked condenser, or a stuck blend door inside the dashboard.
+    ac: `If your ${vName} AC is blowing warm air or not cooling properly, common causes include low refrigerant due to a leak, a malfunctioning compressor or clutch, a blocked condenser, or a stuck blend door inside the dashboard.
 
 **Safe Checks You Can Do:**
-* Listen for a distinct "click" from under the hood when turning the AC on (indicates compressor clutch engagement).
+* Listen for a distinct "click" under the hood when turning the AC on (indicates compressor clutch engagement).
 * Check if the air gets colder while driving at highway speeds versus idling.
 * Inspect the front condenser area for dirt, leaves, or obvious physical damage.
 
@@ -634,18 +616,6 @@ A specialized transmission technician can scan transmission control module (TCM)
 Isolating the location and conditions helps a mechanic pinpoint the issue quickly.
 
 *Where does the noise seem to be coming from, and does it happen when turning or braking?*`,
-
-    tire: `If a tire on your ${vName} is losing air pressure, common causes are a nail or screw puncture in the tread, a leaking valve stem, or bead seal corrosion along the rim.
-
-**SAFETY WARNING:** Do not drive on a completely flat tire to avoid destroying the tire carcass and wheel rim.
-
-**Safe Checks You Can Do:**
-* Visually inspect the tire tread and sidewall for nails or damage.
-* Apply soapy water around the valve stem and tread to look for bubbling air leaks.
-
-A tire shop can safely plug and patch tread punctures in most cases.
-
-*How fast is the tire losing air — within hours or over several days?*`,
 
     general_symptom: `If your ${vName} is showing signs of an issue, potential causes depend on whether it involves performance, braking, electrical, or fluid systems.
 
