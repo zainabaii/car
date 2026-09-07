@@ -18,7 +18,7 @@ export async function handler(event, context) {
 
   try {
     const payload = JSON.parse(event.body || '{}');
-    const { message = '', vehicle = null, conversation = [] } = payload;
+    const { message = '', vehicle: rawVehicle = null, conversation = [] } = payload;
 
     if (!message || !message.trim()) {
       return {
@@ -28,13 +28,16 @@ export async function handler(event, context) {
       };
     }
 
-    // 1. Determine Agent Badge & Role
+    // 1. Extract vehicle context from both vehicle object AND message text
+    const vehicle = extractVehicleContext(message, rawVehicle);
+
+    // 2. Determine Agent Badge & Role
     const agentConfig = determineSpecializedAgent(message);
 
-    // 2. Build VAYRA System Prompt with Automotive Expertise & Vehicle Context
-    const systemPrompt = buildVayraSystemPrompt(vehicle);
+    // 3. Build VAYRA System Prompt with Automotive Expertise & Strict Response Formatting
+    const systemPrompt = buildVayraSystemPrompt(vehicle, message);
 
-    // 3. API Keys from Environment Variables ONLY
+    // 4. API Keys from Environment Variables ONLY
     const geminiApiKey = process.env.GEMINI_API_KEY;
     const groqApiKey = process.env.GROQ_API_KEY;
 
@@ -126,53 +129,88 @@ export async function handler(event, context) {
 // HELPER FUNCTIONS & API INTEGRATIONS
 // -----------------------------------------------------------------------------
 
-function buildVayraSystemPrompt(vehicle) {
-  let vehicleDetails = "No specific vehicle selected by user yet. Ask user for Make, Model, Year, or VIN if needed to give specific advice.";
+function extractVehicleContext(message, existingVehicle) {
+  const v = { ...(existingVehicle || {}) };
   
-  if (vehicle && (vehicle.make || vehicle.model || vehicle.vin)) {
-    vehicleDetails = `
-Active Vehicle Context:
-- Make: ${vehicle.make || 'Unknown'}
-- Model: ${vehicle.model || 'Unknown'}
-- Year: ${vehicle.year || 'Unknown'}
-- VIN: ${vehicle.vin || 'N/A'}
-- Engine: ${vehicle.engine || 'N/A'}
-- Fuel Type: ${vehicle.fuelType || 'Gasoline/Unknown'}
-- Transmission: ${vehicle.transmission || 'N/A'}
-- Vehicle Type: ${vehicle.vehicleType || vehicle.bodyClass || 'N/A'}
-`.trim();
+  // Try extracting Year Make Model from prompt text if missing in garage state
+  if (!v.make || !v.model || !v.year) {
+    const match = message.match(/\b(19[89]\d|20[0-2]\d)\s+([A-Za-z0-9\-]+)\s+([A-Za-z0-9\-]+)/i);
+    if (match) {
+      if (!v.year) v.year = match[1];
+      if (!v.make) v.make = match[2];
+      if (!v.model) v.model = match[3];
+    }
   }
+  return v;
+}
 
-  return `You are VAYRA AI CAR CARE — an intelligent automotive co-pilot and diagnostic advisor.
+function buildVayraSystemPrompt(vehicle, userMessage) {
+  const hasVehicle = vehicle && (vehicle.make || vehicle.model);
+  const vehicleStr = hasVehicle 
+    ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() + (vehicle.engine ? ` (${vehicle.engine})` : '')
+    : 'Vehicle specs not fully specified';
+
+  return `You are VAYRA AI CAR CARE — a master automotive technician and service advisor.
 Tagline: "Know Your Car. Care Smarter."
 
-${vehicleDetails}
+VEHICLE DATA FOR THIS SESSION:
+${hasVehicle ? `- Vehicle: ${vehicleStr}\n- VIN: ${vehicle.vin || 'N/A'}\n- Fuel: ${vehicle.fuelType || 'N/A'}\n- Transmission: ${vehicle.transmission || 'N/A'}` : '- No garage vehicle selected. If user mentioned a vehicle in their message, use that.'}
 
-TONE & PERSONALITY:
-- Professional, intelligent, friendly, calm, concise, and highly knowledgeable about automotive systems.
-- Explain complex car issues clearly so everyday car owners can understand easily.
+ROLE & PERSONALITY:
+You are an experienced, master automotive diagnostic technician. Your answers must be practical, specific, technically useful, concise, understandable to everyday car owners, and safety-conscious.
 
-CRITICAL SAFETY & DIAGNOSTIC RULES:
-1. NEVER claim to make a definitive or guaranteed mechanical diagnosis.
-2. ALWAYS use prudent phrases such as:
+STRICT ACCURACY & PRUDENCE RULES:
+1. NEVER claim a definitive diagnosis. Always use wording such as:
    - "Possible causes include..."
+   - "One possibility is..."
    - "Based on these symptoms..."
-   - "I recommend having a qualified mechanic inspect..."
-3. DANGEROUS SYMPTOMS SAFETY PROTOCOL:
-   If the user reports dangerous symptoms (such as brake failure, severe overheating, smoke, fuel leaks, loss of steering control, oil pressure warning light, or severe engine knocking):
-   - Explicitly urge stopping the vehicle safely as soon as possible.
-   - Recommend turning off the engine and seeking immediate professional mechanic or towing assistance.
+   - "This would need to be confirmed by physical inspection."
+2. NEVER use generic hand-waving placeholders like "component wear", "system variance", "sensor calibration offset", or "fluid degradation" unless you name the EXACT automotive part (e.g., "worn AC compressor clutch relay", "failing water pump impeller", "low R-134a/R-1234yf refrigerant level").
+3. DO NOT instruct users to open pressurized AC lines, release refrigerant, open hot radiator caps, or work under a jacked vehicle without jack stands.
 
-FORMATTING:
-- Structure your response using clean Markdown headers and bullet points.
-- Provide clear possible causes and recommended next steps.`;
+MANDATORY RESPONSE STRUCTURE:
+You MUST format your response using EXACTLY this Markdown layout:
+
+### VAYRA Automotive Guidance
+
+**Vehicle**
+${hasVehicle ? vehicleStr : '[Year Make Model if mentioned, otherwise general guidance for this vehicle type]'}
+
+**What may be happening**
+[A 1-2 sentence clear explanation of what is physically happening with the symptom.]
+
+**3 Most Likely Causes**
+
+1. **[Cause Name]**
+   - **Why:** [Clear explanation of how this specific part/issue causes the reported symptom for this vehicle.]
+
+2. **[Cause Name]**
+   - **Why:** [Clear explanation of how this specific part/issue causes the reported symptom.]
+
+3. **[Cause Name]**
+   - **Why:** [Clear explanation of how this specific part/issue causes the reported symptom.]
+
+**What to Check First**
+[Provide 2-4 safe, non-invasive, practical checks an ordinary vehicle owner can do safely.]
+- [Safe practical check 1]
+- [Safe practical check 2]
+- [Safe practical check 3]
+
+**When to See a Mechanic**
+[Explain clearly when professional tools, manifold pressure gauges, or certified mechanic inspection are required.]
+
+**Follow-Up Questions**
+- [Targeted question 1 to narrow down the issue, e.g. "Does the air become colder while driving versus idling?"]
+- [Targeted question 2, e.g. "Did this symptom appear suddenly or gradually?"]
+
+Maintain a professional, intelligent, friendly, and calm tone. Keep explanations clear and concise.`;
 }
 
 // Intent Classification Engine for UI Badging
 function determineSpecializedAgent(message) {
   const text = message.toLowerCase();
 
-  if (text.includes('shake') || text.includes('vibrat') || text.includes('overheat') || text.includes('noise') || text.includes('smoke') || text.includes('leak') || text.includes('smell') || text.includes('symptom') || text.includes('check engine') || text.includes('start') || text.includes('brake') || text.includes('knock')) {
+  if (text.includes('ac') || text.includes('air condition') || text.includes('warm air') || text.includes('heat') || text.includes('shake') || text.includes('vibrat') || text.includes('overheat') || text.includes('noise') || text.includes('smoke') || text.includes('leak') || text.includes('smell') || text.includes('symptom') || text.includes('check engine') || text.includes('start') || text.includes('brake') || text.includes('knock')) {
     return {
       agentId: 'car-care',
       agentName: 'VAYRA Car Care Agent',
@@ -250,7 +288,7 @@ async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
     },
     contents,
     generationConfig: {
-      temperature: 0.4,
+      temperature: 0.3,
       maxOutputTokens: 1024
     }
   };
@@ -327,7 +365,7 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
 
   for (const modelName of modelsToTry) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       const res = await fetch(url, {
@@ -339,7 +377,7 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
         body: JSON.stringify({
           model: modelName,
           messages,
-          temperature: 0.4,
+          temperature: 0.3,
           max_tokens: 1024
         }),
         signal: controller.signal
@@ -374,45 +412,138 @@ function generateExpertAutomotiveFallback(agentId, message, vehicle) {
   const text = message.toLowerCase();
   const vName = vehicle && vehicle.make ? `${vehicle.year || ''} ${vehicle.make} ${vehicle.model}`.trim() : 'your vehicle';
 
+  // AC / Climate Control Warm Air Symptom
+  if (text.includes('ac') || text.includes('warm air') || text.includes('air condition') || text.includes('cooling')) {
+    return `### VAYRA Automotive Guidance
+
+**Vehicle**
+${vName}
+
+**What may be happening**
+The air conditioning system is blowing warm or ambient cabin air instead of cold air because refrigerant pressure is low or the compressor heat exchange cycle is not engaging properly.
+
+**3 Most Likely Causes**
+
+1. **Low Refrigerant Level (System Leak)**
+   - **Why:** A micro-leak in the AC condenser, Schrader valves, or O-rings lowers refrigerant pressure. Modern AC systems have a low-pressure cutoff switch that prevents the compressor from engaging when refrigerant drops below threshold.
+
+2. **AC Compressor Relay or Clutch Failure**
+   - **Why:** If the AC compressor electromagnetic clutch or relay fails, the pulley spins freely without driving the internal pistons to compress refrigerant.
+
+3. **HVAC Blend Door Actuator Issue**
+   - **Why:** The blend door motor controls the mixing flap inside your dashboard. If stuck in the "heat" position, engine coolant heat mixes into cabin air even when the AC button is pressed.
+
+**What to Check First**
+- Check whether the AC blower fan is blowing air forcefully on all speed settings.
+- Observe if the cabin air feels colder while driving at highway speeds versus idling in traffic.
+- Visually inspect the front radiator/condenser area for oily residue, bent fins, or heavy debris blockage.
+- Listen under the hood with AC turned ON to hear if the compressor clutch clicks and engages.
+
+**When to See a Mechanic**
+A certified technician should hook up a dual manifold gauge set to test high/low side R-134a or R-1234yf system pressures and perform a dye/electronic leak test.
+
+**Follow-Up Questions**
+- Does the AC air become slightly cooler when driving at higher speeds?
+- Do you hear a clicking sound or engine RPM change when you press the AC button?`;
+  }
+
+  // Acceleration Shaking Symptom
   if (text.includes('shake') || text.includes('vibrat')) {
-    return `### VAYRA Symptom Analysis for ${vName}
+    return `### VAYRA Automotive Guidance
 
-**Possible Causes Include:**
-1. **Unbalanced Wheels or Misalignment**: Often noticeable in steering wheel vibration at highway speeds (80-110 km/h).
-2. **Worn CV Axle / Driveshaft Joint**: Acceleration-specific shaking frequently points to inner constant velocity (CV) joint wear.
-3. **Engine Misfire**: Worn spark plugs or ignition coils causing shudder under load.
-4. **Worn Suspension Bushings**: Loose control arm bushings causing wheel shimmy.
+**Vehicle**
+${vName}
 
-**Recommended Next Steps:**
-- Note whether the vibration comes from steering wheel or seat.
-- Have a certified workshop perform a wheel balance, suspension, and CV axle check.
+**What may be happening**
+Vibration during acceleration typically indicates rotational imbalance or torque transmission instability in the drivetrain or suspension.
 
-*I recommend having a qualified mechanic inspect the vehicle to verify exact cause.*`;
+**3 Most Likely Causes**
+
+1. **Worn Inner CV Joint / Axle Assembly**
+   - **Why:** Inner Constant Velocity (CV) joints absorb engine torque. Pitting inside the CV spider bearing causes rhythmic shuddering specifically under throttle load.
+
+2. **Unbalanced Wheels or Tire Belt Separation**
+   - **Why:** Wheel weight displacement or internal tire tread belt separation causes rotational vibration, usually most noticeable at speeds above 80 km/h (50 mph).
+
+3. **Engine Misfire / Ignition Coil Wear**
+   - **Why:** An engine misfiring on one cylinder under load creates torque pulses that feel like a shudder or vibration during acceleration.
+
+**What to Check First**
+- Note whether the vibration comes through the steering wheel (front wheels/axles) or floorboard/seat (rear drivetrain/tires).
+- Check if the Check Engine Light flashes or illuminates during heavy acceleration.
+- Check tire pressures and inspect tread surfaces for uneven cupping or bulges.
+
+**When to See a Mechanic**
+Have a workshop inspect CV boots for torn rubber/grease sling and perform a high-speed wheel balance and suspension check.
+
+**Follow-Up Questions**
+- Does the vibration vanish the moment you lift your foot off the gas pedal?
+- Is the Check Engine Light illuminated on your dashboard?`;
   }
 
-  if (text.includes('overheat')) {
-    return `### Overheating Diagnostic Guidance for ${vName}
+  // Overheating Symptom
+  if (text.includes('overheat') || text.includes('temperature') || text.includes('hot')) {
+    return `### VAYRA Automotive Guidance
 
-**Possible Causes Include:**
-1. **Low Coolant or System Leak**: Radiator hose leaks, water pump seal failure, or radiator crack.
-2. **Stuck Thermostat**: Thermostat failing to open, preventing coolant from circulating.
-3. **Radiator Fan Failure**: Electric cooling fan motor or relay failure.
-4. **Water Pump Impeller Failure**: Loss of coolant circulation.
+**Vehicle**
+${vName}
 
-**CRITICAL SAFETY GUIDANCE:**
-- **PULL OVER SAFELY IMMEDIATELY**: Turn off the engine. 
-- **DO NOT OPEN RADIATOR CAP WHILE HOT**: Severe steam and scalding fluid hazard.
-- Allow engine to cool down completely before checking coolant reservoir level. Seek professional towing or mechanic assistance.`;
+**What may be happening**
+The engine is generating more thermal energy than the cooling system can absorb and dissipate through the radiator.
+
+**3 Most Likely Causes**
+
+1. **Low Coolant Level or System Leak**
+   - **Why:** Leaks in radiator hoses, water pump seals, or heater core lower the coolant fluid volume, creating air pockets that block heat transfer.
+
+2. **Stuck Thermostat**
+   - **Why:** If the wax pellet thermostat fails in the closed position, coolant is trapped in the engine block and cannot flow through the radiator to cool down.
+
+3. **Radiator Cooling Fan Failure**
+   - **Why:** Electric radiator fans pull ambient air across condenser/radiator fins. If the fan motor or relay fails, overheating occurs rapidly when idling or in traffic.
+
+**What to Check First**
+- **CRITICAL SAFETY NOTE**: Pull over safely and turn off engine immediately. DO NOT open the radiator cap while the engine is hot!
+- Check the plastic coolant overflow reservoir tank level after the engine cools completely.
+- Look under the vehicle for puddles of sweet-smelling green, pink, or orange fluid.
+
+**When to See a Mechanic**
+Immediate professional inspection or towing is recommended to prevent head gasket warping or severe engine cylinder block damage.
+
+**Follow-Up Questions**
+- Does the temperature gauge spike when stopped in traffic or while driving up hills?
+- Is steam or sweet-smelling vapor visible under the hood?`;
   }
 
-  return `### VAYRA Automotive Guidance for ${vName}
+  // Default Guidance Structure
+  return `### VAYRA Automotive Guidance
 
-**Possible Causes Include:**
-1. Component wear or alignment variance in key mechanical systems.
-2. Sensor calibration offset or electronic control module variance.
-3. Fluid degradation or filter restriction.
+**Vehicle**
+${vName}
 
-**Recommended Next Steps:**
-- Note exact conditions (engine speed, temperature, vehicle load) when symptoms occur.
-- Have a qualified mechanic perform a diagnostic scan and physical inspection.`;
+**What may be happening**
+Possible variance in mechanical, electrical, or fluid management systems affecting normal operating behavior.
+
+**3 Most Likely Causes**
+
+1. **Electrical / Sensor Signal Variance**
+   - **Why:** Sensor reading mismatches (e.g. MAF, O2, or throttle position sensors) alter engine management calculations.
+
+2. **Fluid Degradation or Filter Restriction**
+   - **Why:** Restricted air, fuel, or oil filters reduce operating efficiency under load.
+
+3. **Mechanical Component Wear**
+   - **Why:** Friction surface wear or bushing alignment variance over extended service intervals.
+
+**What to Check First**
+- Check for warning lights (Check Engine, ABS, Battery) on the instrument cluster.
+- Inspect fluid levels (engine oil, brake fluid, coolant) on level ground.
+- Listen for unusual mechanical noises or pitch changes while operating.
+
+**When to See a Mechanic**
+Schedule a diagnostic scan to retrieve active diagnostic trouble codes (DTCs) from the vehicle ECM/PCM.
+
+**Follow-Up Questions**
+- Under what specific speed, RPM, or engine temperature conditions does this symptom occur?
+- Did the symptom start suddenly or develop gradually over time?`;
 }
