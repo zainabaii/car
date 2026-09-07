@@ -34,7 +34,7 @@ export async function handler(event, context) {
     // 2. Determine Agent Badge & Role
     const agentConfig = determineSpecializedAgent(message);
 
-    // 3. Build VAYRA System Prompt with Automotive Expertise & Strict Response Formatting
+    // 3. Build VAYRA System Prompt with Automotive Expertise & Exact Clean Markdown Structure
     const systemPrompt = buildVayraSystemPrompt(vehicle, message);
 
     // 4. API Keys from Environment Variables ONLY
@@ -147,63 +147,45 @@ function extractVehicleContext(message, existingVehicle) {
 function buildVayraSystemPrompt(vehicle, userMessage) {
   const hasVehicle = vehicle && (vehicle.make || vehicle.model);
   const vehicleStr = hasVehicle 
-    ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim() + (vehicle.engine ? ` (${vehicle.engine})` : '')
-    : 'Vehicle specs not fully specified';
+    ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
+    : 'your vehicle';
 
-  return `You are VAYRA AI CAR CARE — a master automotive technician and service advisor.
+  return `You are VAYRA AI CAR CARE — an expert automotive diagnostic technician and car care advisor.
 Tagline: "Know Your Car. Care Smarter."
 
-VEHICLE DATA FOR THIS SESSION:
-${hasVehicle ? `- Vehicle: ${vehicleStr}\n- VIN: ${vehicle.vin || 'N/A'}\n- Fuel: ${vehicle.fuelType || 'N/A'}\n- Transmission: ${vehicle.transmission || 'N/A'}` : '- No garage vehicle selected. If user mentioned a vehicle in their message, use that.'}
+VEHICLE CONTEXT:
+${hasVehicle ? `Active Vehicle: ${vehicleStr}` : 'No specific vehicle selected in garage. If mentioned in user message, use that exact vehicle name.'}
 
-ROLE & PERSONALITY:
-You are an experienced, master automotive diagnostic technician. Your answers must be practical, specific, technically useful, concise, understandable to everyday car owners, and safety-conscious.
+TONE & STYLE:
+Concise, clear, practical, friendly, and expert. Avoid unnecessary fluff or long introductory preambles. Get straight to the answer.
 
-STRICT ACCURACY & PRUDENCE RULES:
-1. NEVER claim a definitive diagnosis. Always use wording such as:
-   - "Possible causes include..."
-   - "One possibility is..."
-   - "Based on these symptoms..."
-   - "This would need to be confirmed by physical inspection."
-2. NEVER use generic hand-waving placeholders like "component wear", "system variance", "sensor calibration offset", or "fluid degradation" unless you name the EXACT automotive part (e.g., "worn AC compressor clutch relay", "failing water pump impeller", "low R-134a/R-1234yf refrigerant level").
-3. DO NOT instruct users to open pressurized AC lines, release refrigerant, open hot radiator caps, or work under a jacked vehicle without jack stands.
+STRICT RESPONSE FORMAT REQUIREMENTS:
+You MUST format your output using EXACTLY this Markdown template structure:
 
-MANDATORY RESPONSE STRUCTURE:
-You MUST format your response using EXACTLY this Markdown layout:
+### VAYRA Automotive Guidance — ${hasVehicle ? vehicleStr : '[Year Make Model]'}
 
-### VAYRA Automotive Guidance
+If your [brief description of symptom, e.g. "AC is blowing warm air"], the most common reasons are:
 
-**Vehicle**
-${hasVehicle ? vehicleStr : '[Year Make Model if mentioned, otherwise general guidance for this vehicle type]'}
+1. **[Short cause name]** — [Short 1-sentence explanation]
+2. **[Short cause name]** — [Short 1-sentence explanation]
+3. **[Short cause name]** — [Short 1-sentence explanation]
 
-**What may be happening**
-[A 1-2 sentence clear explanation of what is physically happening with the symptom.]
+### You Can Check
 
-**3 Most Likely Causes**
+* [Safe practical check 1]
+* [Safe practical check 2]
+* [Safe practical check 3]
+* [Safe practical check 4]
 
-1. **[Cause Name]**
-   - **Why:** [Clear explanation of how this specific part/issue causes the reported symptom for this vehicle.]
+### When to Visit a Mechanic
 
-2. **[Cause Name]**
-   - **Why:** [Clear explanation of how this specific part/issue causes the reported symptom.]
+[1-2 concise sentences advising when to see a qualified mechanic or technician.]
 
-3. **[Cause Name]**
-   - **Why:** [Clear explanation of how this specific part/issue causes the reported symptom.]
+**VAYRA:** If you tell me whether [1 targeted follow-up question], I can help narrow down the possible cause.
 
-**What to Check First**
-[Provide 2-4 safe, non-invasive, practical checks an ordinary vehicle owner can do safely.]
-- [Safe practical check 1]
-- [Safe practical check 2]
-- [Safe practical check 3]
-
-**When to See a Mechanic**
-[Explain clearly when professional tools, manifold pressure gauges, or certified mechanic inspection are required.]
-
-**Follow-Up Questions**
-- [Targeted question 1 to narrow down the issue, e.g. "Does the air become colder while driving versus idling?"]
-- [Targeted question 2, e.g. "Did this symptom appear suddenly or gradually?"]
-
-Maintain a professional, intelligent, friendly, and calm tone. Keep explanations clear and concise.`;
+SAFETY & ACCURACY RULES:
+- Never state a guaranteed diagnosis. Always list plausible possibilities.
+- Do NOT instruct users to open pressurized lines, hot radiator caps, or undertake dangerous work.`;
 }
 
 // Intent Classification Engine for UI Badging
@@ -412,138 +394,96 @@ function generateExpertAutomotiveFallback(agentId, message, vehicle) {
   const text = message.toLowerCase();
   const vName = vehicle && vehicle.make ? `${vehicle.year || ''} ${vehicle.make} ${vehicle.model}`.trim() : 'your vehicle';
 
-  // AC / Climate Control Warm Air Symptom
+  // AC / Climate Control Warm Air
   if (text.includes('ac') || text.includes('warm air') || text.includes('air condition') || text.includes('cooling')) {
-    return `### VAYRA Automotive Guidance
+    return `### VAYRA Automotive Guidance — ${vName}
 
-**Vehicle**
-${vName}
+If your AC is blowing warm air, the most common reasons are:
 
-**What may be happening**
-The air conditioning system is blowing warm or ambient cabin air instead of cold air because refrigerant pressure is low or the compressor heat exchange cycle is not engaging properly.
+1. **Low refrigerant** — There may be a small leak in the AC system.
+2. **AC compressor problem** — The compressor or its clutch/relay may not be working properly.
+3. **Blend door problem** — A door inside the dashboard may be stuck and allowing warm air into the cabin.
 
-**3 Most Likely Causes**
+### You Can Check
 
-1. **Low Refrigerant Level (System Leak)**
-   - **Why:** A micro-leak in the AC condenser, Schrader valves, or O-rings lowers refrigerant pressure. Modern AC systems have a low-pressure cutoff switch that prevents the compressor from engaging when refrigerant drops below threshold.
+* Make sure the AC is turned on and the blower is working.
+* Check whether the air gets cooler while driving.
+* Listen for a click from the compressor when you turn the AC on.
+* Look for dirt or damage around the condenser at the front of the car.
 
-2. **AC Compressor Relay or Clutch Failure**
-   - **Why:** If the AC compressor electromagnetic clutch or relay fails, the pulley spins freely without driving the internal pistons to compress refrigerant.
+### When to Visit a Mechanic
 
-3. **HVAC Blend Door Actuator Issue**
-   - **Why:** The blend door motor controls the mixing flap inside your dashboard. If stuck in the "heat" position, engine coolant heat mixes into cabin air even when the AC button is pressed.
+If the AC is still blowing warm air, have a qualified AC technician check the refrigerant level, compressor, and system for leaks.
 
-**What to Check First**
-- Check whether the AC blower fan is blowing air forcefully on all speed settings.
-- Observe if the cabin air feels colder while driving at highway speeds versus idling in traffic.
-- Visually inspect the front radiator/condenser area for oily residue, bent fins, or heavy debris blockage.
-- Listen under the hood with AC turned ON to hear if the compressor clutch clicks and engages.
-
-**When to See a Mechanic**
-A certified technician should hook up a dual manifold gauge set to test high/low side R-134a or R-1234yf system pressures and perform a dye/electronic leak test.
-
-**Follow-Up Questions**
-- Does the AC air become slightly cooler when driving at higher speeds?
-- Do you hear a clicking sound or engine RPM change when you press the AC button?`;
+**VAYRA:** If you tell me whether the AC gets cooler while driving and whether you hear a click when you turn it on, I can help narrow down the possible cause.`;
   }
 
-  // Acceleration Shaking Symptom
+  // Shaking on acceleration
   if (text.includes('shake') || text.includes('vibrat')) {
-    return `### VAYRA Automotive Guidance
+    return `### VAYRA Automotive Guidance — ${vName}
 
-**Vehicle**
-${vName}
+If your car is shaking when you accelerate, the most common reasons are:
 
-**What may be happening**
-Vibration during acceleration typically indicates rotational imbalance or torque transmission instability in the drivetrain or suspension.
+1. **Inner CV joint wear** — Worn constant velocity joints on the drive axles can cause shaking under acceleration.
+2. **Unbalanced wheels** — Imbalanced wheels or tire damage can create rotational vibration at speed.
+3. **Engine misfire** — Worn spark plugs or failing ignition coils cause uneven engine firing under throttle load.
 
-**3 Most Likely Causes**
+### You Can Check
 
-1. **Worn Inner CV Joint / Axle Assembly**
-   - **Why:** Inner Constant Velocity (CV) joints absorb engine torque. Pitting inside the CV spider bearing causes rhythmic shuddering specifically under throttle load.
+* Note whether the vibration is felt through the steering wheel or the seat.
+* Check if the Check Engine light is on or flashing during acceleration.
+* Inspect tire pressures and check tread surfaces for visible bulges.
+* Observe if the shaking stops immediately when you release the gas pedal.
 
-2. **Unbalanced Wheels or Tire Belt Separation**
-   - **Why:** Wheel weight displacement or internal tire tread belt separation causes rotational vibration, usually most noticeable at speeds above 80 km/h (50 mph).
+### When to Visit a Mechanic
 
-3. **Engine Misfire / Ignition Coil Wear**
-   - **Why:** An engine misfiring on one cylinder under load creates torque pulses that feel like a shudder or vibration during acceleration.
+If the shaking continues, have a technician inspect your CV axles, wheel balance, and ignition system.
 
-**What to Check First**
-- Note whether the vibration comes through the steering wheel (front wheels/axles) or floorboard/seat (rear drivetrain/tires).
-- Check if the Check Engine Light flashes or illuminates during heavy acceleration.
-- Check tire pressures and inspect tread surfaces for uneven cupping or bulges.
-
-**When to See a Mechanic**
-Have a workshop inspect CV boots for torn rubber/grease sling and perform a high-speed wheel balance and suspension check.
-
-**Follow-Up Questions**
-- Does the vibration vanish the moment you lift your foot off the gas pedal?
-- Is the Check Engine Light illuminated on your dashboard?`;
+**VAYRA:** If you tell me whether the vibration is felt in the steering wheel or seat, and whether the Check Engine light is on, I can help narrow down the cause.`;
   }
 
-  // Overheating Symptom
-  if (text.includes('overheat') || text.includes('temperature') || text.includes('hot')) {
-    return `### VAYRA Automotive Guidance
+  // Overheating
+  if (text.includes('overheat') || text.includes('hot') || text.includes('temperature')) {
+    return `### VAYRA Automotive Guidance — ${vName}
 
-**Vehicle**
-${vName}
+If your engine is overheating, the most common reasons are:
 
-**What may be happening**
-The engine is generating more thermal energy than the cooling system can absorb and dissipate through the radiator.
+1. **Low coolant level** — A leak in the radiator, hoses, or water pump prevents proper cooling.
+2. **Stuck thermostat** — A thermostat stuck closed blocks coolant flow into the radiator.
+3. **Radiator fan failure** — A failed cooling fan motor or relay stops airflow when idling.
 
-**3 Most Likely Causes**
+### You Can Check
 
-1. **Low Coolant Level or System Leak**
-   - **Why:** Leaks in radiator hoses, water pump seals, or heater core lower the coolant fluid volume, creating air pockets that block heat transfer.
+* **PULL OVER SAFELY IMMEDIATELY**: Turn off the engine to prevent severe damage.
+* DO NOT open the radiator cap while the engine is hot.
+* Once cooled down, check the coolant level in the plastic overflow reservoir.
+* Look under the car for liquid leaks (green, pink, or orange fluid).
 
-2. **Stuck Thermostat**
-   - **Why:** If the wax pellet thermostat fails in the closed position, coolant is trapped in the engine block and cannot flow through the radiator to cool down.
+### When to Visit a Mechanic
 
-3. **Radiator Cooling Fan Failure**
-   - **Why:** Electric radiator fans pull ambient air across condenser/radiator fins. If the fan motor or relay fails, overheating occurs rapidly when idling or in traffic.
+If your engine temperature rises above normal, have a qualified technician check the cooling system immediately.
 
-**What to Check First**
-- **CRITICAL SAFETY NOTE**: Pull over safely and turn off engine immediately. DO NOT open the radiator cap while the engine is hot!
-- Check the plastic coolant overflow reservoir tank level after the engine cools completely.
-- Look under the vehicle for puddles of sweet-smelling green, pink, or orange fluid.
-
-**When to See a Mechanic**
-Immediate professional inspection or towing is recommended to prevent head gasket warping or severe engine cylinder block damage.
-
-**Follow-Up Questions**
-- Does the temperature gauge spike when stopped in traffic or while driving up hills?
-- Is steam or sweet-smelling vapor visible under the hood?`;
+**VAYRA:** If you tell me whether the temperature spikes while idling or while driving, I can help narrow down the cause.`;
   }
 
-  // Default Guidance Structure
-  return `### VAYRA Automotive Guidance
+  // Default fallback
+  return `### VAYRA Automotive Guidance — ${vName}
 
-**Vehicle**
-${vName}
+If you are experiencing unexpected vehicle symptoms, the most common reasons are:
 
-**What may be happening**
-Possible variance in mechanical, electrical, or fluid management systems affecting normal operating behavior.
+1. **Sensor or electrical variance** — Faulty sensor signals can trigger performance issues.
+2. **Restricted filters or fluids** — Clogged air, fuel, or cabin filters reduce operating efficiency.
+3. **Mechanical component wear** — Normal wear on spark plugs, belts, or brake pads over time.
 
-**3 Most Likely Causes**
+### You Can Check
 
-1. **Electrical / Sensor Signal Variance**
-   - **Why:** Sensor reading mismatches (e.g. MAF, O2, or throttle position sensors) alter engine management calculations.
+* Check your dashboard for active warning lights (Check Engine, ABS, Battery).
+* Inspect fluid levels (engine oil, coolant, brake fluid) when parked on level ground.
+* Listen for unusual clicking, squeaking, or grinding noises while driving.
 
-2. **Fluid Degradation or Filter Restriction**
-   - **Why:** Restricted air, fuel, or oil filters reduce operating efficiency under load.
+### When to Visit a Mechanic
 
-3. **Mechanical Component Wear**
-   - **Why:** Friction surface wear or bushing alignment variance over extended service intervals.
+If warning lights are present or symptoms persist, have a certified technician perform a diagnostic scan.
 
-**What to Check First**
-- Check for warning lights (Check Engine, ABS, Battery) on the instrument cluster.
-- Inspect fluid levels (engine oil, brake fluid, coolant) on level ground.
-- Listen for unusual mechanical noises or pitch changes while operating.
-
-**When to See a Mechanic**
-Schedule a diagnostic scan to retrieve active diagnostic trouble codes (DTCs) from the vehicle ECM/PCM.
-
-**Follow-Up Questions**
-- Under what specific speed, RPM, or engine temperature conditions does this symptom occur?
-- Did the symptom start suddenly or develop gradually over time?`;
+**VAYRA:** If you share the exact symptoms and warning lights on your dash, I can give you more specific guidance.`;
 }
