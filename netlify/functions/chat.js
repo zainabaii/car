@@ -1,4 +1,4 @@
-// Netlify Serverless Function: VAYRA Agentic AI Chat & Orchestrator
+// Netlify Serverless Function: VAYRA AI Car Care (Gemini Primary + Groq Fallback)
 
 export async function handler(event, context) {
   const headers = {
@@ -13,283 +13,406 @@ export async function handler(event, context) {
   }
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers, body: JSON.stringify({ error: 'Method not allowed' }) };
+    return { statusCode: 405, headers, body: JSON.stringify({ success: false, error: 'Method not allowed' }) };
   }
 
   try {
     const payload = JSON.parse(event.body || '{}');
     const { message = '', vehicle = null, conversation = [] } = payload;
 
-    if (!message.trim()) {
+    if (!message || !message.trim()) {
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ error: 'Message cannot be empty.' })
+        body: JSON.stringify({ success: false, error: 'Message cannot be empty.' })
       };
     }
 
-    // 1. Intent Recognition & Agent Selection (VAYRA Orchestrator)
-    const agentConfig = determineSpecializedAgent(message, vehicle);
+    // 1. Determine Agent Badge & Role
+    const agentConfig = determineSpecializedAgent(message);
 
-    // 2. Format System Prompt with Automotive Expertise & Vehicle Context
-    const systemPrompt = buildAgentSystemPrompt(agentConfig, vehicle);
+    // 2. Build VAYRA System Prompt with Automotive Expertise & Vehicle Context
+    const systemPrompt = buildVayraSystemPrompt(vehicle);
 
-    // 3. Multi-tier Execution (Gemini -> Groq -> Expert Automotive Rule Engine)
-    let aiResponse = null;
-    let providerUsed = 'none';
-
+    // 3. API Keys from Environment Variables ONLY
     const geminiApiKey = process.env.GEMINI_API_KEY;
     const groqApiKey = process.env.GROQ_API_KEY;
 
-    if (geminiApiKey) {
+    let aiResponse = null;
+    let providerUsed = null;
+
+    // --- TIER 1: GEMINI (PRIMARY) ---
+    if (geminiApiKey && geminiApiKey.trim()) {
       try {
-        aiResponse = await callGeminiApi(geminiApiKey, systemPrompt, message, conversation);
-        if (aiResponse) providerUsed = 'Gemini 1.5 Pro/Flash';
+        console.log('Attempting Gemini AI Primary Provider...');
+        aiResponse = await callGeminiApi(geminiApiKey.trim(), systemPrompt, message, conversation);
+        if (aiResponse) {
+          providerUsed = 'gemini';
+        }
       } catch (geminiErr) {
-        console.warn('Gemini AI Provider failed, attempting Groq fallback:', geminiErr.message);
+        console.warn('Gemini AI Provider failed. Falling back to Groq:', geminiErr.message || geminiErr);
       }
+    } else {
+      console.warn('GEMINI_API_KEY environment variable is not configured.');
     }
 
-    if (!aiResponse && groqApiKey) {
+    // --- TIER 2: GROQ (FALLBACK) ---
+    if (!aiResponse && groqApiKey && groqApiKey.trim()) {
       try {
-        aiResponse = await callGroqApi(groqApiKey, systemPrompt, message, conversation);
-        if (aiResponse) providerUsed = 'Groq Llama-3';
+        console.log('Attempting Groq AI Fallback Provider...');
+        aiResponse = await callGroqApi(groqApiKey.trim(), systemPrompt, message, conversation);
+        if (aiResponse) {
+          providerUsed = 'groq';
+        }
       } catch (groqErr) {
-        console.warn('Groq AI Provider failed:', groqErr.message);
+        console.warn('Groq AI Provider failed:', groqErr.message || groqErr);
       }
+    } else if (!aiResponse) {
+      console.warn('GROQ_API_KEY environment variable is not configured or Groq was skipped.');
     }
 
-    // Fallback to VAYRA Expert System Engine if API keys not set or AI failed
+    // --- TIER 3: VAYRA EXPERT ENGINE FALLBACK (If APIs down or keys missing) ---
     if (!aiResponse) {
       aiResponse = generateExpertAutomotiveFallback(agentConfig.agentId, message, vehicle);
-      providerUsed = 'VAYRA Expert Engine';
+      providerUsed = 'vayra-expert';
     }
 
-    const safetyDisclaimer = "\n\n*VAYRA provides general automotive guidance based on reported symptoms and vehicle specs. It does not replace a qualified mechanic or physical inspection.*";
+    // Friendly error message if both fail completely or return no content
+    if (!aiResponse) {
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: false,
+          provider: 'none',
+          message: 'VAYRA is temporarily unable to connect to its AI services. Please try again in a moment.',
+          reply: 'VAYRA is temporarily unable to connect to its AI services. Please try again in a moment.'
+        })
+      };
+    }
 
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         success: true,
+        provider: providerUsed,
+        message: aiResponse,
+        reply: aiResponse,
         agent: {
           id: agentConfig.agentId,
           name: agentConfig.agentName,
           role: agentConfig.agentRole,
           badge: agentConfig.badge
-        },
-        provider: providerUsed,
-        reply: aiResponse + safetyDisclaimer,
-        rawText: aiResponse,
-        vehicleContext: vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : null
+        }
       })
     };
 
   } catch (err) {
-    console.error('VAYRA Chat Error:', err);
+    console.error('VAYRA Chat Handler Error:', err);
     return {
       statusCode: 500,
       headers,
       body: JSON.stringify({
-        error: 'Chat Processing Error',
-        message: err.message || 'Unable to process chat request.'
+        success: false,
+        message: 'VAYRA is temporarily unable to connect to its AI services. Please try again in a moment.',
+        reply: 'VAYRA is temporarily unable to connect to its AI services. Please try again in a moment.'
       })
     };
   }
 }
 
-// Intent Classification Engine
-function determineSpecializedAgent(message, vehicle) {
+// -----------------------------------------------------------------------------
+// HELPER FUNCTIONS & API INTEGRATIONS
+// -----------------------------------------------------------------------------
+
+function buildVayraSystemPrompt(vehicle) {
+  let vehicleDetails = "No specific vehicle selected by user yet. Ask user for Make, Model, Year, or VIN if needed to give specific advice.";
+  
+  if (vehicle && (vehicle.make || vehicle.model || vehicle.vin)) {
+    vehicleDetails = `
+Active Vehicle Context:
+- Make: ${vehicle.make || 'Unknown'}
+- Model: ${vehicle.model || 'Unknown'}
+- Year: ${vehicle.year || 'Unknown'}
+- VIN: ${vehicle.vin || 'N/A'}
+- Engine: ${vehicle.engine || 'N/A'}
+- Fuel Type: ${vehicle.fuelType || 'Gasoline/Unknown'}
+- Transmission: ${vehicle.transmission || 'N/A'}
+- Vehicle Type: ${vehicle.vehicleType || vehicle.bodyClass || 'N/A'}
+`.trim();
+  }
+
+  return `You are VAYRA AI CAR CARE — an intelligent automotive co-pilot and diagnostic advisor.
+Tagline: "Know Your Car. Care Smarter."
+
+${vehicleDetails}
+
+TONE & PERSONALITY:
+- Professional, intelligent, friendly, calm, concise, and highly knowledgeable about automotive systems.
+- Explain complex car issues clearly so everyday car owners can understand easily.
+
+CRITICAL SAFETY & DIAGNOSTIC RULES:
+1. NEVER claim to make a definitive or guaranteed mechanical diagnosis.
+2. ALWAYS use prudent phrases such as:
+   - "Possible causes include..."
+   - "Based on these symptoms..."
+   - "I recommend having a qualified mechanic inspect..."
+3. DANGEROUS SYMPTOMS SAFETY PROTOCOL:
+   If the user reports dangerous symptoms (such as brake failure, severe overheating, smoke, fuel leaks, loss of steering control, oil pressure warning light, or severe engine knocking):
+   - Explicitly urge stopping the vehicle safely as soon as possible.
+   - Recommend turning off the engine and seeking immediate professional mechanic or towing assistance.
+
+FORMATTING:
+- Structure your response using clean Markdown headers and bullet points.
+- Provide clear possible causes and recommended next steps.`;
+}
+
+// Intent Classification Engine for UI Badging
+function determineSpecializedAgent(message) {
   const text = message.toLowerCase();
 
-  // Symptoms / Troubleshooting -> Car Care Agent
   if (text.includes('shake') || text.includes('vibrat') || text.includes('overheat') || text.includes('noise') || text.includes('smoke') || text.includes('leak') || text.includes('smell') || text.includes('symptom') || text.includes('check engine') || text.includes('start') || text.includes('brake') || text.includes('knock')) {
     return {
       agentId: 'car-care',
-      agentName: 'Car Care Agent',
+      agentName: 'VAYRA Car Care Agent',
       agentRole: 'Automotive Diagnostics & Symptom Analyzer',
       badge: 'CARE AGENT'
     };
   }
 
-  // Maintenance & Interval questions -> Maintenance Agent
   if (text.includes('service') || text.includes('oil') || text.includes('interval') || text.includes('maintenance') || text.includes('filter') || text.includes('fluid') || text.includes('belt') || text.includes('spark plug') || text.includes('schedule') || text.includes('km') || text.includes('miles')) {
     return {
       agentId: 'maintenance',
-      agentName: 'Maintenance Agent',
+      agentName: 'VAYRA Maintenance Agent',
       agentRole: 'Vehicle Service Planning & Intervals',
       badge: 'MAINTENANCE AGENT'
     };
   }
 
-  // Workshop / Service Center -> Workshop Finder Agent
   if (text.includes('workshop') || text.includes('mechanic') || text.includes('garage') || text.includes('repair shop') || text.includes('near me') || text.includes('find') || text.includes('dealer')) {
     return {
       agentId: 'workshop',
-      agentName: 'Workshop Finder Agent',
+      agentName: 'VAYRA Workshop Finder Agent',
       agentRole: 'Service Center & Repair Network Locator',
       badge: 'WORKSHOP AGENT'
     };
   }
 
-  // Reminders & Scheduling -> Service Reminder Agent
   if (text.includes('remind') || text.includes('notification') || text.includes('due') || text.includes('calendar') || text.includes('track')) {
     return {
       agentId: 'reminder',
-      agentName: 'Service Reminder Agent',
+      agentName: 'VAYRA Service Reminder Agent',
       agentRole: 'Automotive Lifecycle & Milestone Tracker',
       badge: 'REMINDER AGENT'
     };
   }
 
-  // Default / Specs / Identity -> Vehicle Information Agent
   return {
     agentId: 'vehicle-info',
-    agentName: 'Vehicle Information Agent',
-    agentRole: 'Vehicle Specifications & Identity Specialist',
-    badge: 'SPEC AGENT'
+    agentName: 'VAYRA Co-Pilot Agent',
+    agentRole: 'Automotive Intelligence Specialist',
+    badge: 'CARE AGENT'
   };
 }
 
-function buildAgentSystemPrompt(agentConfig, vehicle) {
-  let vehicleInfoStr = vehicle && vehicle.make ? `Active Vehicle: ${vehicle.year || ''} ${vehicle.make} ${vehicle.model} (VIN: ${vehicle.vin || 'N/A'}, Engine: ${vehicle.engine || 'N/A'}, Fuel: ${vehicle.fuelType || 'N/A'})` : 'Active Vehicle: None specified yet.';
-
-  return `You are VAYRA, an intelligent automotive co-pilot operating as the ${agentConfig.agentName}.
-${vehicleInfoStr}
-
-Core Instructions:
-1. Tone: Futuristic, expert, concise, authoritative yet approachable.
-2. Safety: NEVER claim to definitively diagnose a dangerous mechanical issue. Always structure diagnostic guidance as:
-   - Possible Causes
-   - Recommended Next Steps
-   - Safety Guidance / Professional Inspection Note
-3. Format output clearly with clean bullet points and short paragraphs.`;
-}
-
+// -----------------------------------------------------------------------------
+// CALL GEMINI API (PRIMARY)
+// -----------------------------------------------------------------------------
 async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-  
-  const contents = [
-    { role: 'user', parts: [{ text: `${systemPrompt}\n\nUser Question: ${userMessage}` }] }
-  ];
+  const modelsToTry = ['gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest'];
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents })
+  const contents = [];
+
+  // Convert previous conversation turns for Gemini
+  if (Array.isArray(conversation)) {
+    for (const msg of conversation) {
+      if (!msg || !msg.text) continue;
+      if (msg.id === 'msg-1' || msg.text.includes('Hello! I am VAYRA')) continue;
+
+      const role = (msg.sender === 'user') ? 'user' : 'model';
+      contents.push({
+        role,
+        parts: [{ text: msg.text }]
+      });
+    }
+  }
+
+  // Append current user message
+  contents.push({
+    role: 'user',
+    parts: [{ text: userMessage }]
   });
 
-  if (!res.ok) throw new Error(`Gemini status ${res.status}`);
-  const json = await res.json();
-  return json.candidates?.[0]?.content?.parts?.[0]?.text || null;
+  const body = {
+    systemInstruction: {
+      parts: [{ text: systemPrompt }]
+    },
+    contents,
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 1024
+    }
+  };
+
+  let lastErr = null;
+
+  for (const modelName of modelsToTry) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Gemini ${modelName} HTTP ${res.status}: ${errText}`);
+      }
+
+      const json = await res.json();
+      const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text && text.trim()) {
+        return text.trim();
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastErr = err;
+      console.warn(`Gemini model ${modelName} call failed:`, err.message);
+    }
+  }
+
+  throw lastErr || new Error('All Gemini models failed.');
 }
 
+// -----------------------------------------------------------------------------
+// CALL GROQ API (FALLBACK)
+// -----------------------------------------------------------------------------
 async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
   const url = 'https://api.groq.com/openai/v1/chat/completions';
-  
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      model: 'llama3-8b-8192',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
-      ]
-    })
+  const modelsToTry = ['groq/compound', 'groq/compound-mini', 'openai/gpt-oss-20b'];
+
+  const messages = [
+    { role: 'system', content: systemPrompt }
+  ];
+
+  // Convert previous conversation turns for Groq / OpenAI format
+  if (Array.isArray(conversation)) {
+    for (const msg of conversation) {
+      if (!msg || !msg.text) continue;
+      if (msg.id === 'msg-1' || msg.text.includes('Hello! I am VAYRA')) continue;
+
+      const role = (msg.sender === 'user') ? 'user' : 'assistant';
+      messages.push({
+        role,
+        content: msg.text
+      });
+    }
+  }
+
+  // Append current user message
+  messages.push({
+    role: 'user',
+    content: userMessage
   });
 
-  if (!res.ok) throw new Error(`Groq status ${res.status}`);
-  const json = await res.json();
-  return json.choices?.[0]?.message?.content || null;
+  let lastErr = null;
+
+  for (const modelName of modelsToTry) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages,
+          temperature: 0.4,
+          max_tokens: 1024
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Groq ${modelName} HTTP ${res.status}: ${errText}`);
+      }
+
+      const json = await res.json();
+      const text = json.choices?.[0]?.message?.content;
+      if (text && text.trim()) {
+        return text.trim();
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      lastErr = err;
+      console.warn(`Groq model ${modelName} call failed:`, err.message);
+    }
+  }
+
+  throw lastErr || new Error('All Groq models failed.');
 }
 
+// -----------------------------------------------------------------------------
+// EXPERT AUTOMOTIVE FALLBACK ENGINE
+// -----------------------------------------------------------------------------
 function generateExpertAutomotiveFallback(agentId, message, vehicle) {
   const text = message.toLowerCase();
-  const vName = vehicle && vehicle.make ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : 'your vehicle';
+  const vName = vehicle && vehicle.make ? `${vehicle.year || ''} ${vehicle.make} ${vehicle.model}`.trim() : 'your vehicle';
 
-  if (agentId === 'car-care') {
-    if (text.includes('shake') || text.includes('vibrat')) {
-      return `### VAYRA Symptom Analysis for ${vName}
+  if (text.includes('shake') || text.includes('vibrat')) {
+    return `### VAYRA Symptom Analysis for ${vName}
 
-**Possible Causes:**
-1. **Unbalanced or Misaligned Wheels**: Most common when shaking occurs at specific highway speeds (80-110 km/h).
-2. **Worn Drivetrain / CV Joints**: Constant velocity joint wear often causes vibration specifically during acceleration.
-3. **Uneven Brake Rotor Wear**: If vibration increases heavily when depressing the brake pedal.
-4. **Engine Misfire or Spark Plug Wear**: Feels like stuttering/shaking during hard throttle load.
+**Possible Causes Include:**
+1. **Unbalanced Wheels or Misalignment**: Often noticeable in steering wheel vibration at highway speeds (80-110 km/h).
+2. **Worn CV Axle / Driveshaft Joint**: Acceleration-specific shaking frequently points to inner constant velocity (CV) joint wear.
+3. **Engine Misfire**: Worn spark plugs or ignition coils causing shudder under load.
+4. **Worn Suspension Bushings**: Loose control arm bushings causing wheel shimmy.
 
 **Recommended Next Steps:**
-- Note whether vibration comes from the steering wheel or seat.
-- Inspect tire tread depth and check for missing wheel balance weights.
-- Schedule a wheel balance and suspension alignment at a certified workshop.`;
-    }
+- Note whether the vibration comes from steering wheel or seat.
+- Have a certified workshop perform a wheel balance, suspension, and CV axle check.
 
-    if (text.includes('overheat')) {
-      return `### Overheating Diagnostic Guidance for ${vName}
+*I recommend having a qualified mechanic inspect the vehicle to verify exact cause.*`;
+  }
 
-**Possible Causes:**
-1. **Low Coolant Level or Leak**: Air locks or physical fluid loss in the radiator system.
-2. **Faulty Thermostat**: Stuck in closed position, preventing coolant flow into radiator.
-3. **Radiator Fan Failure**: Fails to trigger when idling in traffic.
-4. **Water Pump Impeller Failure**: Inability to circulate engine coolant under engine load.
+  if (text.includes('overheat')) {
+    return `### Overheating Diagnostic Guidance for ${vName}
 
-**Safety Guidance:**
-- **CRITICAL**: Pull over safely immediately. Turn off engine and DO NOT open radiator cap while hot (risk of severe steam burns).
-- Allow engine to cool completely before inspecting coolant reservoir level.`;
-    }
+**Possible Causes Include:**
+1. **Low Coolant or System Leak**: Radiator hose leaks, water pump seal failure, or radiator crack.
+2. **Stuck Thermostat**: Thermostat failing to open, preventing coolant from circulating.
+3. **Radiator Fan Failure**: Electric cooling fan motor or relay failure.
+4. **Water Pump Impeller Failure**: Loss of coolant circulation.
 
-    return `### Symptom Analysis for ${vName}
+**CRITICAL SAFETY GUIDANCE:**
+- **PULL OVER SAFELY IMMEDIATELY**: Turn off the engine. 
+- **DO NOT OPEN RADIATOR CAP WHILE HOT**: Severe steam and scalding fluid hazard.
+- Allow engine to cool down completely before checking coolant reservoir level. Seek professional towing or mechanic assistance.`;
+  }
 
-**Possible Causes:**
-1. Component wear or alignment variance in key sub-systems.
-2. Electrical sensor reading mismatch or throttle response variance.
+  return `### VAYRA Automotive Guidance for ${vName}
+
+**Possible Causes Include:**
+1. Component wear or alignment variance in key mechanical systems.
+2. Sensor calibration offset or electronic control module variance.
 3. Fluid degradation or filter restriction.
 
 **Recommended Next Steps:**
-- Observe under what exact conditions (speed, RPM, temperature) the symptom manifests.
-- Scan for diagnostic trouble codes (DTCs) if Check Engine light is illuminated.`;
-  }
-
-  if (agentId === 'maintenance') {
-    return `### Service Interval Plan for ${vName}
-
-**Standard Interval Checklist:**
-- **Engine Oil & Filter Change**: Every 8,000 - 10,000 km (or 12 months, synthetic recommended).
-- **Cabin & Engine Air Filters**: Every 15,000 - 20,000 km.
-- **Brake Fluid & Inspection**: Every 24 months / 30,000 km.
-- **Coolant Flush & Spark Plugs**: Every 60,000 - 90,000 km depending on engine specs.
-
-*Note: Driving conditions (frequent short trips, extreme weather, heavy loads) shorten these intervals.*`;
-  }
-
-  if (agentId === 'workshop') {
-    return `### Workshop Finder Assistance
-
-To connect you with certified repair facilities specializing in ${vName}:
-1. Use our interactive **Workshop Discovery** tool below to locate certified service partners.
-2. Filter by service specialization (EV Diagnostic, Brake & Suspension, General Service).
-3. Ensure the workshop provides full warranty-backed OEM or equivalent parts replacement.`;
-  }
-
-  if (agentId === 'reminder') {
-    return `### Service Reminder Engine
-
-You can set automated maintenance milestones for ${vName} directly in your **VAYRA Digital Garage**.
-- Set upcoming threshold targets (e.g. Next Oil Service in 5,000 KM).
-- VAYRA tracks lifecycle intervals and alerts you before service windows elapse.`;
-  }
-
-  // Default vehicle-info
-  return `### Vehicle Intelligence Profile: ${vName}
-
-**Overview:**
-- **Identity**: ${vehicle ? vehicle.vin : 'Generic Profile'}
-- **Power Unit**: ${vehicle ? vehicle.engine : 'Internal Combustion'}
-- **Drive Configuration**: ${vehicle ? vehicle.driveType : 'Standard Configuration'}
-- **Fuel Specs**: ${vehicle ? vehicle.fuelType : 'Gasoline'}
-
-Ask VAYRA specific questions about maintenance intervals, troubleshooting symptoms, or workshop recommendations for this vehicle.`;
+- Note exact conditions (engine speed, temperature, vehicle load) when symptoms occur.
+- Have a qualified mechanic perform a diagnostic scan and physical inspection.`;
 }
