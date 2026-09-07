@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #F7FAFC;
+    color: #10233F;
+  }
+}
+
+/* Light Glassmorphism & Soft Card Panels */
+.glass-panel-light {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid #DCE8F5;
+  box-shadow: 0 10px 30px -5px rgba(11, 94, 215, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03);
+}
+
+.glass-panel-blue {
+  background: linear-gradient(135deg, rgba(238, 246, 255, 0.95) 0%, rgba(255, 255, 255, 0.9) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid #C4DCF5;
+  box-shadow: 0 15px 35px rgba(11, 94, 215, 0.12);
+}
+
+.glass-pill-light {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid #DCE8F5;
+  box-shadow: 0 2px 8px rgba(11, 94, 215, 0.06);
+}
+
+/* Custom Scrollbar for Light Theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #0B5ED7;
+}
+
+/* Blue Soft Glows */
+.blue-soft-glow {
+  box-shadow: 0 0 40px rgba(11, 94, 215, 0.15);
+}
+
+.bg-sky-gradient {
+  background: linear-gradient(180deg, #EEF6FF 0%, #F7FAFC 100%);
+}
