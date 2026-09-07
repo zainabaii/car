@@ -34,7 +34,7 @@ export async function handler(event, context) {
     // 2. Determine Agent Badge & Role
     const agentConfig = determineSpecializedAgent(message);
 
-    // 3. Build VAYRA System Prompt with Automotive Expertise & Exact Clean Markdown Structure
+    // 3. Build VAYRA System Prompt with Automotive Expertise & Clear Conversational Persona
     const systemPrompt = buildVayraSystemPrompt(vehicle, message);
 
     // 4. API Keys from Environment Variables ONLY
@@ -132,7 +132,6 @@ export async function handler(event, context) {
 function extractVehicleContext(message, existingVehicle) {
   const v = { ...(existingVehicle || {}) };
   
-  // Try extracting Year Make Model from prompt text if missing in garage state
   if (!v.make || !v.model || !v.year) {
     const match = message.match(/\b(19[89]\d|20[0-2]\d)\s+([A-Za-z0-9\-]+)\s+([A-Za-z0-9\-]+)/i);
     if (match) {
@@ -148,44 +147,33 @@ function buildVayraSystemPrompt(vehicle, userMessage) {
   const hasVehicle = vehicle && (vehicle.make || vehicle.model);
   const vehicleStr = hasVehicle 
     ? `${vehicle.year || ''} ${vehicle.make || ''} ${vehicle.model || ''}`.trim()
-    : 'your vehicle';
+    : null;
 
-  return `You are VAYRA AI CAR CARE — an expert automotive diagnostic technician and car care advisor.
+  return `You are VAYRA, a friendly, expert automotive assistant for a car website.
 Tagline: "Know Your Car. Care Smarter."
 
 VEHICLE CONTEXT:
-${hasVehicle ? `Active Vehicle: ${vehicleStr}` : 'No specific vehicle selected in garage. If mentioned in user message, use that exact vehicle name.'}
+${hasVehicle ? `Customer's Vehicle: ${vehicleStr} (Engine: ${vehicle.engine || 'N/A'}, VIN: ${vehicle.vin || 'N/A'})` : 'No specific vehicle selected. If the customer mentions year, make, or model in their prompt, reference that vehicle directly.'}
 
-TONE & STYLE:
-Concise, clear, practical, friendly, and expert. Avoid unnecessary fluff or long introductory preambles. Get straight to the answer.
+YOUR GOAL:
+Help customers understand common vehicle problems in simple, clear, friendly language.
 
-STRICT RESPONSE FORMAT REQUIREMENTS:
-You MUST format your output using EXACTLY this Markdown template structure:
+HOW YOU MUST ANSWER:
+1. Identify the 2–3 most likely possible causes in simple terms.
+2. Explain them simply without overwhelming mechanical jargon. If you use a technical term, explain it simply.
+3. Give 2–4 safe, easy things the customer can check.
+4. Tell the customer when they should visit a mechanic.
+5. Ask 1 or 2 useful follow-up questions to help narrow down the cause.
+6. Keep normal answers short — preferably 4 to 8 sentences total.
+7. Tone: Friendly, helpful, professional, simple, and concise. Do NOT sound like a rigid repair manual.
+8. If vehicle information is missing, give helpful general advice and ask for the vehicle year, make, and model.
 
-### VAYRA Automotive Guidance — ${hasVehicle ? vehicleStr : '[Year Make Model]'}
+CRITICAL SAFETY RULES:
+- If the problem is dangerous (e.g. Engine Overheating, Brake Failure, Oil Warning Light, Steering Loss, Fuel Leak, Flashing Check Engine Light), clearly urge stopping the vehicle safely and seeking professional help immediately.
+- NEVER instruct customers to open a hot radiator cap, handle pressurized refrigerant/fuel, work under a car supported only by a jack, or touch moving belts.
 
-If your [brief description of symptom, e.g. "AC is blowing warm air"], the most common reasons are:
-
-1. **[Short cause name]** — [Short 1-sentence explanation]
-2. **[Short cause name]** — [Short 1-sentence explanation]
-3. **[Short cause name]** — [Short 1-sentence explanation]
-
-### You Can Check
-
-* [Safe practical check 1]
-* [Safe practical check 2]
-* [Safe practical check 3]
-* [Safe practical check 4]
-
-### When to Visit a Mechanic
-
-[1-2 concise sentences advising when to see a qualified mechanic or technician.]
-
-**VAYRA:** If you tell me whether [1 targeted follow-up question], I can help narrow down the possible cause.
-
-SAFETY & ACCURACY RULES:
-- Never state a guaranteed diagnosis. Always list plausible possibilities.
-- Do NOT instruct users to open pressurized lines, hot radiator caps, or undertake dangerous work.`;
+DISCLAIMER REQUIREMENT:
+Never claim a confirmed diagnosis. Always state possible causes. VAYRA provides general automotive guidance, not a confirmed mechanical diagnosis.`;
 }
 
 // Intent Classification Engine for UI Badging
@@ -244,7 +232,6 @@ async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
 
   const contents = [];
 
-  // Convert previous conversation turns for Gemini
   if (Array.isArray(conversation)) {
     for (const msg of conversation) {
       if (!msg || !msg.text) continue;
@@ -258,7 +245,6 @@ async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
     }
   }
 
-  // Append current user message
   contents.push({
     role: 'user',
     parts: [{ text: userMessage }]
@@ -271,7 +257,7 @@ async function callGeminiApi(apiKey, systemPrompt, userMessage, conversation) {
     contents,
     generationConfig: {
       temperature: 0.3,
-      maxOutputTokens: 1024
+      maxOutputTokens: 500
     }
   };
 
@@ -323,7 +309,6 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
     { role: 'system', content: systemPrompt }
   ];
 
-  // Convert previous conversation turns for Groq / OpenAI format
   if (Array.isArray(conversation)) {
     for (const msg of conversation) {
       if (!msg || !msg.text) continue;
@@ -337,7 +322,6 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
     }
   }
 
-  // Append current user message
   messages.push({
     role: 'user',
     content: userMessage
@@ -360,7 +344,7 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
           model: modelName,
           messages,
           temperature: 0.3,
-          max_tokens: 1024
+          max_tokens: 500
         }),
         signal: controller.signal
       });
@@ -388,102 +372,98 @@ async function callGroqApi(apiKey, systemPrompt, userMessage, conversation) {
 }
 
 // -----------------------------------------------------------------------------
-// EXPERT AUTOMOTIVE FALLBACK ENGINE
+// EXPERT AUTOMOTIVE FALLBACK ENGINE (12 Categories)
 // -----------------------------------------------------------------------------
 function generateExpertAutomotiveFallback(agentId, message, vehicle) {
   const text = message.toLowerCase();
   const vName = vehicle && vehicle.make ? `${vehicle.year || ''} ${vehicle.make} ${vehicle.model}`.trim() : 'your vehicle';
 
-  // AC / Climate Control Warm Air
+  // 1. AC Not Cooling
   if (text.includes('ac') || text.includes('warm air') || text.includes('air condition') || text.includes('cooling')) {
-    return `### VAYRA Automotive Guidance — ${vName}
+    return `Your ${vName} AC may not be cooling because of low refrigerant, a compressor problem, or an issue with the air-mixing system. Check whether the air gets colder while driving and whether you hear the AC compressor engage when you turn it on. If it still blows warm air, an AC technician should check the refrigerant and system for leaks.
 
-If your AC is blowing warm air, the most common reasons are:
-
-1. **Low refrigerant** — There may be a small leak in the AC system.
-2. **AC compressor problem** — The compressor or its clutch/relay may not be working properly.
-3. **Blend door problem** — A door inside the dashboard may be stuck and allowing warm air into the cabin.
-
-### You Can Check
-
-* Make sure the AC is turned on and the blower is working.
-* Check whether the air gets cooler while driving.
-* Listen for a click from the compressor when you turn the AC on.
-* Look for dirt or damage around the condenser at the front of the car.
-
-### When to Visit a Mechanic
-
-If the AC is still blowing warm air, have a qualified AC technician check the refrigerant level, compressor, and system for leaks.
-
-**VAYRA:** If you tell me whether the AC gets cooler while driving and whether you hear a click when you turn it on, I can help narrow down the possible cause.`;
+Does the AC get colder while driving, or is it warm all the time?`;
   }
 
-  // Shaking on acceleration
-  if (text.includes('shake') || text.includes('vibrat')) {
-    return `### VAYRA Automotive Guidance — ${vName}
-
-If your car is shaking when you accelerate, the most common reasons are:
-
-1. **Inner CV joint wear** — Worn constant velocity joints on the drive axles can cause shaking under acceleration.
-2. **Unbalanced wheels** — Imbalanced wheels or tire damage can create rotational vibration at speed.
-3. **Engine misfire** — Worn spark plugs or failing ignition coils cause uneven engine firing under throttle load.
-
-### You Can Check
-
-* Note whether the vibration is felt through the steering wheel or the seat.
-* Check if the Check Engine light is on or flashing during acceleration.
-* Inspect tire pressures and check tread surfaces for visible bulges.
-* Observe if the shaking stops immediately when you release the gas pedal.
-
-### When to Visit a Mechanic
-
-If the shaking continues, have a technician inspect your CV axles, wheel balance, and ignition system.
-
-**VAYRA:** If you tell me whether the vibration is felt in the steering wheel or seat, and whether the Check Engine light is on, I can help narrow down the cause.`;
-  }
-
-  // Overheating
+  // 2. Engine Overheating
   if (text.includes('overheat') || text.includes('hot') || text.includes('temperature')) {
-    return `### VAYRA Automotive Guidance — ${vName}
+    return `Your ${vName} engine may be overheating because of low coolant, a coolant leak, or a problem with the radiator or cooling fan. If the temperature gauge is in the red or you see steam, safely stop the car and turn off the engine. Do not open the radiator cap while the engine is hot.
 
-If your engine is overheating, the most common reasons are:
-
-1. **Low coolant level** — A leak in the radiator, hoses, or water pump prevents proper cooling.
-2. **Stuck thermostat** — A thermostat stuck closed blocks coolant flow into the radiator.
-3. **Radiator fan failure** — A failed cooling fan motor or relay stops airflow when idling.
-
-### You Can Check
-
-* **PULL OVER SAFELY IMMEDIATELY**: Turn off the engine to prevent severe damage.
-* DO NOT open the radiator cap while the engine is hot.
-* Once cooled down, check the coolant level in the plastic overflow reservoir.
-* Look under the car for liquid leaks (green, pink, or orange fluid).
-
-### When to Visit a Mechanic
-
-If your engine temperature rises above normal, have a qualified technician check the cooling system immediately.
-
-**VAYRA:** If you tell me whether the temperature spikes while idling or while driving, I can help narrow down the cause.`;
+Is the temperature warning light on, and do you see any coolant leaking under the car?`;
   }
 
-  // Default fallback
-  return `### VAYRA Automotive Guidance — ${vName}
+  // 3. Battery / Starting Issue
+  if (text.includes('start') || text.includes('battery') || text.includes('crank') || text.includes('dead')) {
+    return `If your ${vName} won't start, the battery may be weak or the battery connections may be loose or corroded. If you hear clicking when you try to start the car, the battery could be low. If the battery keeps going dead after being charged, the alternator may need to be checked.
 
-If you are experiencing unexpected vehicle symptoms, the most common reasons are:
+Do you hear clicking when you turn the key or press the start button?`;
+  }
 
-1. **Sensor or electrical variance** — Faulty sensor signals can trigger performance issues.
-2. **Restricted filters or fluids** — Clogged air, fuel, or cabin filters reduce operating efficiency.
-3. **Mechanical component wear** — Normal wear on spark plugs, belts, or brake pads over time.
+  // 4. Check Engine Light
+  if (text.includes('check engine') || text.includes('engine light') || text.includes('warning light')) {
+    return `A check-engine light can come on for many reasons, from a loose fuel cap to an engine or sensor problem. If the light is steady, you can usually have the car checked soon. If the light is flashing or the engine is running badly, stop driving if it is safe to do so and have it inspected.
 
-### You Can Check
+Is the check-engine light steady or flashing?`;
+  }
 
-* Check your dashboard for active warning lights (Check Engine, ABS, Battery).
-* Inspect fluid levels (engine oil, coolant, brake fluid) when parked on level ground.
-* Listen for unusual clicking, squeaking, or grinding noises while driving.
+  // 5. Brake Problems
+  if (text.includes('brake') || text.includes('stopping') || text.includes('squeal') || text.includes('grind')) {
+    return `If your brakes feel weak, make grinding or squealing sounds, or the brake pedal feels unusual, the brake pads or another part of the braking system may need attention. Because brakes are safety-critical, it is best to have them inspected promptly. If the pedal goes to the floor or the car cannot stop normally, do not continue driving.
 
-### When to Visit a Mechanic
+Does the brake pedal feel soft, hard, or normal?`;
+  }
 
-If warning lights are present or symptoms persist, have a certified technician perform a diagnostic scan.
+  // 6. Car Shaking
+  if (text.includes('shake') || text.includes('vibrat') || text.includes('wobble')) {
+    return `Car shaking can come from tires, wheel balance, brakes, or an engine-related problem. If the shaking happens mainly at higher speeds, the tires or wheels may be worth checking first. If it happens mainly while braking, the brakes may need inspection.
 
-**VAYRA:** If you share the exact symptoms and warning lights on your dash, I can give you more specific guidance.`;
+Does the shaking happen while driving normally, accelerating, or braking?`;
+  }
+
+  // 7. Oil Warning Light
+  if (text.includes('oil light') || text.includes('oil warning') || text.includes('oil pressure')) {
+    return `If the oil warning light comes on, safely stop the vehicle and check the engine oil level if you can do so safely. Driving with low oil pressure can cause serious engine damage. If the oil level is normal but the warning light remains on, have the vehicle inspected before continuing to drive.
+
+Is the oil warning light staying on while the engine is running?`;
+  }
+
+  // 8. Poor Fuel Economy
+  if (text.includes('fuel') || text.includes('gas mileage') || text.includes('economy') || text.includes('mpg')) {
+    return `Poor fuel economy can be caused by low tire pressure, a dirty air filter, an engine or sensor problem, or driving conditions. Start by checking your tire pressure and whether the check-engine light is on. If fuel consumption suddenly becomes much worse, have the car inspected.
+
+Did the fuel economy get worse suddenly or gradually?`;
+  }
+
+  // 9. Strange Noise
+  if (text.includes('noise') || text.includes('sound') || text.includes('squeak') || text.includes('rattle') || text.includes('clunk')) {
+    return `A strange noise can come from several parts of the car, including the engine, brakes, tires, or suspension. The location and timing of the noise can help narrow it down. If the noise is loud, sudden, or accompanied by a warning light, have the vehicle inspected promptly.
+
+Where does the noise seem to come from, and does it happen while braking, accelerating, or turning?`;
+  }
+
+  // 10. Steering Problem
+  if (text.includes('steer') || text.includes('power steering') || text.includes('wheel hard')) {
+    return `If the steering suddenly becomes very heavy, loose, or difficult to control, there may be a problem with the steering system, tires, or suspension. Because steering is safety-critical, avoid driving the vehicle if you cannot control it normally and have it inspected.
+
+Did the steering problem happen suddenly or gradually?`;
+  }
+
+  // 11. Transmission Problems
+  if (text.includes('transmission') || text.includes('gear') || text.includes('shift') || text.includes('slip')) {
+    return `If your car is slipping, jerking, delaying when changing gears, or making unusual transmission noises, there may be a transmission or fluid-related problem. Avoid hard acceleration until the problem is checked. A qualified technician can inspect the transmission and fluid condition.
+
+Does the car jerk, slip, or have trouble changing gears?`;
+  }
+
+  // 12. Flat or Losing Tire Pressure
+  if (text.includes('tire') || text.includes('flat') || text.includes('pressure') || text.includes('puncture')) {
+    return `If a tire is losing air, it may have a puncture, valve leak, or tire damage. Check the tire pressure and look for obvious damage, but do not drive on a severely underinflated or damaged tire. Have the tire inspected and repaired or replaced if necessary.
+
+How quickly is the tire losing air?`;
+  }
+
+  // Default Guidance
+  return `If your ${vName} is experiencing an unexpected issue, common causes include sensor or electrical variances, restricted filters or fluids, or normal mechanical component wear. You can check your dashboard for warning lights and verify your fluid levels when parked on level ground.
+
+What car do you have (including the year and model), and when does the problem happen — while starting, driving, braking, or idling?`;
 }
