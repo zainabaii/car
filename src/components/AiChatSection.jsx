@@ -70,20 +70,13 @@ export default function AiChatSection({ activeVehicle, initialPrompt }) {
           sender: 'vayra',
           badge: data.agent?.badge || 'VAYRA AI',
           agentName: data.agent?.name || 'VAYRA Co-Pilot',
-          text: data.reply || data.message,
+          text: data.reply,
           provider: data.provider,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setMessages(prev => [...prev, vayraMsg]);
       } else {
-        const errorMsg = {
-          id: `err-${Date.now()}`,
-          sender: 'vayra',
-          badge: 'SYSTEM NOTICE',
-          text: data.message || data.reply || "VAYRA is temporarily unable to connect to its AI services. Please try again in a moment.",
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        };
-        setMessages(prev => [...prev, errorMsg]);
+        throw new Error(data.message || 'Error processing response');
       }
     } catch (err) {
       console.error(err);
@@ -91,7 +84,7 @@ export default function AiChatSection({ activeVehicle, initialPrompt }) {
         id: `err-${Date.now()}`,
         sender: 'vayra',
         badge: 'SYSTEM NOTICE',
-        text: "VAYRA is temporarily unable to connect to its AI services. Please try again in a moment.",
+        text: "Operating in offline expert mode. " + (err.message || "Please try again."),
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, errorMsg]);
@@ -243,7 +236,7 @@ export default function AiChatSection({ activeVehicle, initialPrompt }) {
                     </div>
                     <div className="bg-white p-4 rounded-2xl border border-[#DCE8F5] text-xs font-mono text-[#0B5ED7] flex items-center space-x-2 shadow-sm">
                       <RefreshCw className="w-4 h-4 animate-spin text-[#0B5ED7]" />
-                      <span>VAYRA is analyzing your question...</span>
+                      <span>VAYRA IS THINKING & ROUTING QUERY...</span>
                     </div>
                   </div>
                 )}
